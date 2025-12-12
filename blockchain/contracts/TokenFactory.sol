@@ -8,7 +8,6 @@ import "./HouseSecurityToken.sol";
 contract TokenFactory is Ownable {
     address public immutable identityRegistry;
 
-    // 🔥 AJOUT : on mémorise l'adresse de la SaleFactory
     address public saleFactory;
 
     address[] public allHouseTokens;

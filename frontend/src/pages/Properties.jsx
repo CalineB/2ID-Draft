@@ -24,8 +24,6 @@ export default function Properties() {
         const maxSupply = await token.maxSupply();
         const totalSupply = await token.totalSupply();
 
-        // si tu as stocké les adresses de HouseEthSale quelque part, tu les récupères ici
-        // pour l’exemple, j’omet ce lien
 
         const progress =
           maxSupply > 0n

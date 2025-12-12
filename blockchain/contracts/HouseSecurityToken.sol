@@ -88,7 +88,6 @@ contract HouseSecurityToken is Ownable {
         saleFactory = _saleFactory;
     }
 
-    // 🧠 MODIF : maintenant owner OU saleFactory peuvent setter le saleContract
     function setSaleContract(address _saleContract) external onlyOwnerOrSaleFactory {
         require(_saleContract != address(0), "Token: saleContract zero");
         emit SaleContractUpdated(saleContract, _saleContract);

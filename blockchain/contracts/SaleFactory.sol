@@ -51,9 +51,6 @@ contract SaleFactory is Ownable {
         );
 
         saleAddr = address(sale);
-
-        // ⚠️ AVANT ça revertait parce que token.setSaleContract était onlyOwner
-        // Maintenant, HouseSecurityToken autorise owner OU saleFactory.
         token.setSaleContract(saleAddr);
 
         emit SaleCreated(tokenAddr, saleAddr, projectOwner, priceWeiPerToken);

@@ -1,4 +1,3 @@
-// src/pages/Market.jsx
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { readContract } from "wagmi/actions";
@@ -15,7 +14,6 @@ export default function Market() {
   const [houses, setHouses] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // métadonnées front (créées / modifiées dans Admin.jsx)
   const [metaMap] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("propertyMeta") || "{}");
@@ -84,11 +82,10 @@ export default function Market() {
             totalSupply: ts,
             maxSupply: ms,
             progress,
-            meta, // toutes les infos front (adresse, prix, image, published, …)
+            meta,
           });
         }
 
-        // On ne montre QUE les biens marqués comme "published"
         const published = list.filter(
           (h) => h.meta && h.meta.published === true
         );

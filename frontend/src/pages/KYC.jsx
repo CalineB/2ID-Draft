@@ -1,4 +1,3 @@
-// src/pages/KYC.jsx
 import React, { useState, useEffect } from "react";
 import { useAccount, useReadContract, useWriteContract } from "wagmi";
 import { keccak256, toUtf8Bytes } from "ethers";
@@ -20,6 +19,9 @@ export default function KYC() {
     street: "",
     city: "",
     country: "",
+    zip: "",
+    nationality: "",
+    taxCountry: "FR",
   });
 
   const [idFile, setIdFile] = useState(null);
@@ -63,8 +65,7 @@ export default function KYC() {
     },
   });
 
-  // Décodage du retour de requests[wallet]
-  // Solidity probable : (bytes32 hash, bool exists, bool approved, bool rejected)
+ 
   let exists = false;
   let approved = false;
   let rejected = false;
@@ -82,7 +83,6 @@ export default function KYC() {
     }
   }
 
-  // Déduction d'un statut lisible
   let kycStatusLabel = "Aucune demande KYC trouvée.";
   if (exists) {
     if (approved && !rejected) {

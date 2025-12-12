@@ -323,11 +323,11 @@
 			]
 		},
 		"blockchain/contracts/TokenFactory.sol": {
-			"keccak256": "0xd9e8c579c44dd0ec7f6ad5bc4f16f49d6704d873df46c8e9b3df2cf0db6b4010",
+			"keccak256": "0x7693ae6658ddad15cb60b3f9bef952a74c3d835326802c5d21a31008f3bc068b",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://d1777981fd9482157aaa6a51b9f7311551753c53ddb656919217f42639e70b51",
-				"dweb:/ipfs/QmcEB3so8QDoNiTBwcJkH6GSuDNK3qSLFuFkypz4LiE42H"
+				"bzz-raw://8d4efb1e84d9d097d55fda61d9ebc315d3e4b1f7129ea259999bd53c9e43b818",
+				"dweb:/ipfs/QmSjmjfBhFHkEwAJFmJKUXaebaRtTjraP7CQPp8LmAekF2"
 			]
 		}
 	},

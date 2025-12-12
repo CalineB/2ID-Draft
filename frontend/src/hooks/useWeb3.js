@@ -1,4 +1,3 @@
-// src/hooks/useWeb3.js
 import { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { ADDRESSES, ABIS, NETWORK_ID } from "../config/contracts";

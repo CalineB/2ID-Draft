@@ -1,0 +1,184 @@
+:root{
+  --bg: #fbfaf8;
+  --card: rgba(255,255,255,0.72);
+  --cardSolid: #ffffff;
+  --text: rgba(15, 18, 23, 0.92);
+  --muted: rgba(15, 18, 23, 0.62);
+  --border: rgba(15, 18, 23, 0.10);
+  --shadow: 0 10px 30px rgba(15,18,23,0.08);
+  --shadow2: 0 6px 18px rgba(15,18,23,0.06);
+  --radius: 18px;
+  --radius2: 999px;
+  --gold: rgba(180, 146, 74, 0.9);
+  --goldSoft: rgba(180, 146, 74, 0.18);
+}
+
+*{ box-sizing:border-box; }
+html, body { height: 100%; }
+body{
+  margin:0;
+  background:
+    radial-gradient(1200px 600px at 20% -10%, rgba(180,146,74,0.10), transparent 55%),
+    radial-gradient(900px 500px at 90% 0%, rgba(0,0,0,0.04), transparent 60%),
+    var(--bg);
+  color: var(--text);
+  font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino,
+               "Cormorant Garamond", "Times New Roman", serif;
+  letter-spacing: 0.2px;
+}
+
+a{ color: inherit; }
+code{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9em;
+  background: rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.08);
+  padding: 0.1rem 0.35rem;
+  border-radius: 8px;
+}
+
+/* Layout helpers */
+.container{
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem;
+}
+
+.card{
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow2);
+  backdrop-filter: blur(10px);
+}
+
+.card--solid{
+  background: var(--cardSolid);
+}
+
+/* Header */
+.header{
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(255,255,255,0.65);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(14px);
+}
+
+.header__inner{
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0.95rem 1rem;
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap: 0.75rem;
+}
+.brand__logo{
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.5px;
+  padding: 0.35rem 0.6rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.55);
+  box-shadow: var(--shadow2);
+}
+
+/* Nav */
+.nav{
+  display:flex;
+  gap: 0.45rem;
+  align-items:center;
+}
+.nav__link{
+  text-decoration:none;
+  padding: 0.45rem 0.7rem;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  color: var(--muted);
+  transition: 160ms ease;
+}
+.nav__link:hover{
+  border-color: var(--border);
+  background: rgba(255,255,255,0.55);
+  color: var(--text);
+}
+.nav__link--active{
+  border-color: var(--border);
+  background: rgba(255,255,255,0.75);
+  color: var(--text);
+}
+
+/* Right area */
+.header__right{
+  display:flex;
+  align-items:center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content:flex-end;
+}
+
+/* Buttons */
+.btn{
+  appearance:none;
+  border: 1px solid rgba(180,146,74,0.35);
+  background: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.60));
+  color: var(--text);
+  padding: 0.48rem 0.75rem;
+  border-radius: 14px;
+  box-shadow: var(--shadow2);
+  cursor:pointer;
+  transition: 160ms ease;
+  font-size: 0.95rem;
+}
+.btn:hover{ transform: translateY(-1px); border-color: rgba(180,146,74,0.55); }
+.btn:disabled{ opacity: 0.55; cursor:not-allowed; transform:none; }
+
+.btn--ghost{
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.55);
+}
+
+/* Badges */
+.badge{
+  display:inline-flex;
+  align-items:center;
+  gap: 6px;
+  padding: 0.28rem 0.55rem;
+  border-radius: var(--radius2);
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
+  line-height: 1;
+  white-space:nowrap;
+  background: rgba(255,255,255,0.55);
+  color: var(--muted);
+}
+
+.badge--ok{
+  background: rgba(46,125,50,0.12);
+  border-color: rgba(46,125,50,0.25);
+  color: rgba(27,94,32,0.95);
+}
+.badge--warn{
+  background: rgba(255,152,0,0.14);
+  border-color: rgba(255,152,0,0.28);
+  color: rgba(120,70,0,0.95);
+}
+.badge--danger{
+  background: rgba(176,0,32,0.10);
+  border-color: rgba(176,0,32,0.22);
+  color: rgba(176,0,32,0.92);
+}
+.badge--admin{
+  background: rgba(30,136,229,0.12);
+  border-color: rgba(30,136,229,0.25);
+  color: rgba(25,90,150,0.95);
+}
