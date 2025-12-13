@@ -12,6 +12,7 @@ import SaleJSON from "../abis/HouseEthSale.json";
 
 import { useKycStatus } from "../hooks/useKycStatus.js";
 import KycBadge from "../components/KycBadge.jsx";
+import CrystalButton from "../components/CrystalButton.jsx";
 
 const HouseTokenABI = HouseTokenJSON.abi;
 const SaleABI = SaleJSON.abi;
@@ -24,6 +25,11 @@ function clampInt(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.floor(n));
+}
+
+function safeNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 export default function HouseDetail() {
@@ -117,7 +123,7 @@ export default function HouseDetail() {
 
   // --- computed display ---
   const maxSupplyNum = tokenInfo?.maxSupply ? Number(tokenInfo.maxSupply) : 0;
-  const priceEUR = meta?.price ? Number(meta.price) : null;
+  const priceEUR = meta?.price ? safeNum(meta.price) : null;
 
   const pricePerTokenEUR = priceEUR !== null && maxSupplyNum > 0 ? priceEUR / maxSupplyNum : null;
   const percentPerToken = maxSupplyNum > 0 ? 100 / maxSupplyNum : null;
@@ -165,7 +171,19 @@ export default function HouseDetail() {
     }
   }
 
-  if (loading || !tokenInfo) return <p>Chargement du bien...</p>;
+  if (loading || !tokenInfo) {
+    return (
+      <div className="container">
+        <div className="card">
+          <div className="card__body">
+            <p className="muted">Chargement du bien…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const title = meta?.name || tokenInfo.name;
 
   return (
     <div className="container">
@@ -173,41 +191,64 @@ export default function HouseDetail() {
         {/* ------------ COLONNE GAUCHE ------------ */}
         <div>
           <div style={{ marginBottom: 12 }}>
-            <Link to="/market" className="link">
+            <Link
+              to="/market"
+              className="muted"
+              style={{ textDecoration: "underline", textUnderlineOffset: 4 }}
+            >
               ← Retour au market
             </Link>
           </div>
 
           {mainImage && (
-            <div className="media">
-              <img src={mainImage} alt={tokenInfo.name} className="media__img" />
+            <div className="card" style={{ overflow: "hidden" }}>
+              <img
+                src={mainImage}
+                alt={title}
+                style={{ width: "100%", height: 360, objectFit: "cover", display: "block" }}
+              />
             </div>
           )}
 
           {images.length > 1 && (
-            <div className="thumbs">
+            <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
               {images.map((img, idx) => (
                 <button
                   key={idx}
                   type="button"
-                  className={`thumb ${idx === currentImageIndex ? "is-active" : ""}`}
                   onClick={() => setCurrentImageIndex(idx)}
+                  style={{
+                    border: "1px solid rgba(255,255,255,.14)",
+                    background: "rgba(255,255,255,.04)",
+                    borderRadius: 14,
+                    padding: 6,
+                    cursor: "pointer",
+                    outline: "none",
+                    opacity: idx === currentImageIndex ? 1 : 0.75,
+                  }}
+                  aria-label={`Voir image ${idx + 1}`}
                 >
-                  <img src={img} alt={`thumbnail-${idx}`} />
+                  <img
+                    src={img}
+                    alt={`thumbnail-${idx}`}
+                    style={{ width: 92, height: 62, objectFit: "cover", borderRadius: 10, display: "block" }}
+                  />
                 </button>
               ))}
             </div>
           )}
 
           <div style={{ marginTop: 16 }}>
-            <h1 style={{ marginBottom: 6 }}>{meta?.name || tokenInfo.name}</h1>
-            <div className="muted">Security token · <strong>{tokenInfo.symbol}</strong></div>
+            <h1 style={{ marginBottom: 6 }}>{title}</h1>
+            <div className="muted">
+              Security token · <strong>{tokenInfo.symbol}</strong>
+            </div>
 
             {meta?.spvName && (
               <div className="card" style={{ marginTop: 14 }}>
                 <div className="card__body">
                   <div className="muted">SPV</div>
-                  <div style={{ fontWeight: 700, marginTop: 4 }}>{meta.spvName}</div>
+                  <div style={{ fontWeight: 800, marginTop: 4 }}>{meta.spvName}</div>
                   <div className="muted" style={{ marginTop: 6 }}>
                     {meta.spvRegistration || "—"}
                     {meta.spvContractNumber ? ` · ${meta.spvContractNumber}` : ""}
@@ -224,33 +265,62 @@ export default function HouseDetail() {
                   {meta?.country ? `, ${meta.country}` : ""}
                 </div>
 
-                <div style={{ marginTop: 10 }} className="grid3">
+                <div
+                  style={{
+                    marginTop: 10,
+                    display: "grid",
+                    gap: 10,
+                    gridTemplateColumns: "repeat(3, minmax(0,1fr))",
+                  }}
+                >
                   <div>
                     <div className="muted">Prix (€)</div>
-                    <div style={{ fontWeight: 700 }}>{meta?.price || "—"}</div>
+                    <div style={{ fontWeight: 800 }}>{meta?.price || "—"}</div>
                   </div>
                   <div>
                     <div className="muted">Surface (m²)</div>
-                    <div style={{ fontWeight: 700 }}>{meta?.sqm || "—"}</div>
+                    <div style={{ fontWeight: 800 }}>{meta?.sqm || "—"}</div>
                   </div>
                   <div>
-                    <div className="muted">Obligations</div>
-                    <div style={{ fontWeight: 700 }}>{meta?.rooms || "—"}</div>
+                    <div className="muted">Pièces</div>
+                    <div style={{ fontWeight: 800 }}>{meta?.rooms || "—"}</div>
                   </div>
                 </div>
 
-                {meta?.description && <p style={{ marginTop: 12, lineHeight: 1.6 }}>{meta.description}</p>}
+                <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div className="pill">
+                    <span className="pill__label">Rendement cible</span> {meta?.yield ? `${meta.yield}%` : "—"}
+                  </div>
+                  {percentPerToken !== null && (
+                    <div className="pill">
+                      <span className="pill__label">Part / token</span> {percentPerToken.toFixed(4)}%
+                    </div>
+                  )}
+                </div>
+
+                {meta?.description && (
+                  <p className="muted" style={{ marginTop: 12, lineHeight: 1.7 }}>
+                    {meta.description}
+                  </p>
+                )}
               </div>
             </div>
           </div>
         </div>
 
         {/* ------------ COLONNE DROITE ------------ */}
-        <div className="card sticky">
+        <div
+          className="card"
+          style={{ position: "sticky", top: 92, alignSelf: "start" }}
+        >
           <div className="card__body">
             <div className="flex between">
               <h2 style={{ margin: 0 }}>Investir</h2>
-              {isConnected ? <KycBadge {...kyc} /> : <div className="badge badge--warn">⚠️ Wallet non connecté</div>}
+              {isConnected ? (
+                <KycBadge {...kyc} />
+              ) : (
+                <div className="badge badge--warn">⚠️ Wallet non connecté</div>
+              )}
             </div>
 
             <div className="muted" style={{ marginTop: 10 }}>
@@ -258,20 +328,23 @@ export default function HouseDetail() {
             </div>
 
             <div className="progress" style={{ marginTop: 10 }}>
-              <div className="progress__bar" style={{ width: `${tokenInfo.progress}%` }} />
-            </div>
-            <div className="muted" style={{ marginTop: 6 }}>
-              Avancement : {tokenInfo.progress}%
+              <div className="progress__bar">
+                <div className="progress__fill" style={{ width: `${tokenInfo.progress}%` }} />
+              </div>
+              <div className="progress__meta">
+                <span>Avancement</span>
+                <span>{tokenInfo.progress}%</span>
+              </div>
             </div>
 
             {pricePerTokenEUR !== null && percentPerToken !== null && (
-              <div className="note" style={{ marginTop: 14 }}>
+              <div className="pill" style={{ marginTop: 12 }}>
                 1 token = <strong>{pricePerTokenEUR.toFixed(2)} €</strong> ≈{" "}
                 <strong>{percentPerToken.toFixed(4)}%</strong> du bien
               </div>
             )}
 
-            <div className="hr" />
+            <div className="divider" />
 
             {!isLinked && (
               <div className="badge badge--danger">
@@ -280,7 +353,9 @@ export default function HouseDetail() {
             )}
 
             {isLinked && saleInfo?.readError && (
-              <div className="badge badge--danger">Contrat de vente trouvé, mais lecture impossible (ABI / réseau).</div>
+              <div className="badge badge--danger">
+                Contrat de vente trouvé, mais lecture impossible (ABI / réseau).
+              </div>
             )}
 
             {isLinked && !saleInfo?.readError && (
@@ -291,9 +366,9 @@ export default function HouseDetail() {
                   </div>
                 )}
 
-                <form onSubmit={handleBuy} className="form">
-                  <label className="label">
-                    Nombre de parts (tokens)
+                <form onSubmit={handleBuy} style={{ display: "grid", gap: 12 }}>
+                  <div>
+                    <label className="label">Nombre de parts (tokens)</label>
                     <input
                       className="input"
                       type="number"
@@ -303,19 +378,19 @@ export default function HouseDetail() {
                       onChange={(e) => setTokenAmount(e.target.value)}
                       placeholder="Ex: 10"
                     />
-                  </label>
+                  </div>
 
                   {parts > 0 && saleInfo?.priceWeiPerToken > 0n && (
-                    <div className="muted" style={{ fontSize: 13, lineHeight: 1.5 }}>
+                    <div className="muted" style={{ fontSize: 13, lineHeight: 1.6 }}>
                       Tu achètes <strong>{parts}</strong> part(s).<br />
                       Prix on-chain : <strong>{formatEther(saleInfo.priceWeiPerToken)} ETH</strong> / token.<br />
                       Tu vas envoyer environ <strong>{requiredEthString} ETH</strong>.
                     </div>
                   )}
 
-                  <button className="btn btn--primary" type="submit" disabled={isPending || !saleInfo?.saleActive}>
+                  <CrystalButton tone="gold" type="submit" disabled={isPending || !saleInfo?.saleActive}>
                     {isPending ? "Transaction en cours…" : "Acheter des parts"}
-                  </button>
+                  </CrystalButton>
                 </form>
 
                 {txHash && (
@@ -323,7 +398,13 @@ export default function HouseDetail() {
                     <div className="muted">
                       TX : <code>{txHash}</code>
                     </div>
-                    <a className="link" href={`https://sepolia.etherscan.io/tx/${txHash}`} target="_blank" rel="noreferrer">
+                    <a
+                      className="muted"
+                      style={{ textDecoration: "underline", textUnderlineOffset: 4 }}
+                      href={`https://sepolia.etherscan.io/tx/${txHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       Ouvrir sur Etherscan ↗
                     </a>
                   </div>
@@ -331,11 +412,13 @@ export default function HouseDetail() {
               </>
             )}
 
-            <div className="hr" />
+            <div className="divider" />
 
             <div className="muted" style={{ fontSize: 13 }}>
-              Contrat de vente : <code>{isLinked ? saleInfo?.saleContract : "Aucun"}</code>
+              Contrat de vente :{" "}
+              <code>{isLinked ? saleInfo?.saleContract : "Aucun"}</code>
             </div>
+
             {saleInfo?.priceWeiPerToken > 0n && (
               <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
                 Prix : <strong>{formatEther(saleInfo.priceWeiPerToken)} ETH</strong> / token

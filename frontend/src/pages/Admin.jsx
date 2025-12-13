@@ -9,6 +9,8 @@ import IdentityJSON from "../abis/IdentityRegistry.json";
 import KYCJSON from "../abis/KYCRequestRegistry.json";
 import TokenFactoryJSON from "../abis/TokenFactory.json";
 import HouseTokenJSON from "../abis/HouseSecurityToken.json";
+import CrystalButton from "../components/CrystalButton.jsx";
+
 
 const IdentityABI = IdentityJSON.abi;
 const KYCABI = KYCJSON.abi;
@@ -419,73 +421,76 @@ export default function Admin() {
                 </div>
               )}
 
-              <div className="flex" style={{ gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-                <button
-                  className="btn"
-                  disabled={isPending || !canApproveManual}
-                  onClick={async () => {
-                    try {
-                      await approveKyc(kycWallet);
-                      await verifyInvestor(kycWallet);
-                      alert("KYC approuvé + whitelist ON.");
-                      setReloadFlag((x) => x + 1);
-                    } catch (e) {
-                      alert(e?.shortMessage || e?.message || "Erreur approve");
-                    }
-                  }}
-                >
-                  ✅ Approver + Whitelist
-                </button>
+            <div className="actionRow" style={{ marginTop: 14 }}>
+              <CrystalButton
+                tone="gold"
+                disabled={isPending || !canApproveManual}
+                onClick={async () => {
+                  try {
+                    await approveKyc(kycWallet);
+                    await verifyInvestor(kycWallet);
+                    alert("KYC approuvé + whitelist ON.");
+                    setReloadFlag((x) => x + 1);
+                  } catch (e) {
+                    alert(e?.shortMessage || e?.message || "Erreur approve");
+                  }
+                }}
+              >
+                ✅ Approver + Whitelist
+              </CrystalButton>
 
-                <button
-                  className="btn btn--ghost"
-                  disabled={isPending || !canRevokeManual}
-                  onClick={async () => {
-                    try {
-                      await revokeInvestor(kycWallet);
-                      alert("Whitelist révoquée (gel).");
-                      setReloadFlag((x) => x + 1);
-                    } catch (e) {
-                      alert(e?.shortMessage || e?.message || "Erreur revoke");
-                    }
-                  }}
-                >
-                  🧊 Révoquer (geler)
-                </button>
+              <CrystalButton
+                tone="blue"
+                variant="ghost"
+                disabled={isPending || !canRevokeManual}
+                onClick={async () => {
+                  try {
+                    await revokeInvestor(kycWallet);
+                    alert("Whitelist révoquée (gel).");
+                    setReloadFlag((x) => x + 1);
+                  } catch (e) {
+                    alert(e?.shortMessage || e?.message || "Erreur revoke");
+                  }
+                }}
+              >
+                🧊 Révoquer (geler)
+              </CrystalButton>
 
-                <button
-                  className="btn"
-                  disabled={isPending || !canReWhitelistManual}
-                  onClick={async () => {
-                    try {
-                      await verifyInvestor(kycWallet);
-                      alert("Wallet re-whiteliste.");
-                      setReloadFlag((x) => x + 1);
-                    } catch (e) {
-                      alert(e?.shortMessage || e?.message || "Erreur re-whitelist");
-                    }
-                  }}
-                >
-                  ✅ Re-whitelister
-                </button>
+              <CrystalButton
+                tone="gold"
+                disabled={isPending || !canReWhitelistManual}
+                onClick={async () => {
+                  try {
+                    await verifyInvestor(kycWallet);
+                    alert("Wallet re-whiteliste.");
+                    setReloadFlag((x) => x + 1);
+                  } catch (e) {
+                    alert(e?.shortMessage || e?.message || "Erreur re-whitelist");
+                  }
+                }}
+              >
+                ✅ Re-whitelister
+              </CrystalButton>
 
-                <button
-                  className="btn btn--ghost"
-                  disabled={isPending || !canRejectManual}
-                  onClick={async () => {
-                    try {
-                      await rejectKyc(kycWallet);
-                      await revokeInvestor(kycWallet);
-                      alert("Rejeté + whitelist off.");
-                      setReloadFlag((x) => x + 1);
-                    } catch (e) {
-                      alert(e?.shortMessage || e?.message || "Erreur reject");
-                    }
-                  }}
-                >
-                  ❌ Rejeter
-                </button>
-              </div>
+              <CrystalButton
+                tone="blue"
+                variant="ghost"
+                disabled={isPending || !canRejectManual}
+                onClick={async () => {
+                  try {
+                    await rejectKyc(kycWallet);
+                    await revokeInvestor(kycWallet);
+                    alert("Rejeté + whitelist off.");
+                    setReloadFlag((x) => x + 1);
+                  } catch (e) {
+                    alert(e?.shortMessage || e?.message || "Erreur reject");
+                  }
+                }}
+              >
+                ❌ Rejeter
+              </CrystalButton>
+            </div>
+
             </div>
           </div>
 
@@ -834,92 +839,95 @@ function KycListCard({
               </div>
             )}
 
-            <div className="flex" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-              {showApprove && (
-                <button
-                  className="btn"
-                  type="button"
-                  disabled={isPending || (canApprove ? !canApprove(item) : false)}
-                  onClick={async () => {
-                    try {
-                      await onApprove?.(item.wallet, item.form);
-                    } catch (e) {
-                      alert(e?.shortMessage || e?.message || "Erreur approve");
-                    }
-                  }}
+          <div className="actionRow" style={{ marginTop: 10 }}>
+            {showApprove && (
+              <CrystalButton
+                tone="gold"
+                type="button"
+                disabled={isPending || (canApprove ? !canApprove(item) : false)}
+                onClick={async () => {
+                  try {
+                    await onApprove?.(item.wallet, item.form);
+                  } catch (e) {
+                    alert(e?.shortMessage || e?.message || "Erreur approve");
+                  }
+                }}
                 >
                   ✅ Approuver
-                </button>
+                </CrystalButton>
               )}
 
-              {showReApprove && (
-                <button
-                  className="btn"
-                  type="button"
-                  disabled={isPending}
-                  onClick={async () => {
-                    try {
-                      await onReApprove?.(item.wallet, item.form);
-                    } catch (e) {
-                      alert(e?.shortMessage || e?.message || "Erreur re-approve");
-                    }
-                  }}
-                >
-                  ✅ Ré-approuver
-                </button>
-              )}
+            {showReApprove && (
+              <CrystalButton
+                tone="gold"
+                type="button"
+                disabled={isPending}
+                onClick={async () => {
+                  try {
+                    await onReApprove?.(item.wallet, item.form);
+                  } catch (e) {
+                    alert(e?.shortMessage || e?.message || "Erreur re-approve");
+                  }
+                }}
+              >
+                ✅ Ré-approuver
+              </CrystalButton>
+            )}
 
-              {showReWhitelist && (
-                <button
-                  className="btn"
-                  type="button"
-                  disabled={isPending}
-                  onClick={async () => {
-                    try {
-                      await onReWhitelist?.(item.wallet);
-                    } catch (e) {
-                      alert(e?.shortMessage || e?.message || "Erreur re-whitelist");
-                    }
-                  }}
-                >
-                  ✅ Re-whitelister
-                </button>
-              )}
+            {showReWhitelist && (
+              <CrystalButton
+                tone="gold"
+                type="button"
+                disabled={isPending}
+                onClick={async () => {
+                  try {
+                    await onReWhitelist?.(item.wallet);
+                  } catch (e) {
+                    alert(e?.shortMessage || e?.message || "Erreur re-whitelist");
+                  }
+                }}
+              >
+                ✅ Re-whitelister
+              </CrystalButton>
+            )}
 
-              {showFreeze && (
-                <button
-                  className="btn btn--ghost"
-                  type="button"
-                  disabled={isPending}
-                  onClick={async () => {
-                    try {
-                      await onFreeze?.(item.wallet);
-                    } catch (e) {
-                      alert(e?.shortMessage || e?.message || "Erreur freeze");
-                    }
-                  }}
-                >
-                  🧊 Révoquer (geler)
-                </button>
-              )}
+            {showFreeze && (
+              <CrystalButton
+                tone="blue"
+                variant="ghost"
+                type="button"
+                disabled={isPending}
+                onClick={async () => {
+                  try {
+                    await onFreeze?.(item.wallet);
+                  } catch (e) {
+                    alert(e?.shortMessage || e?.message || "Erreur freeze");
+                  }
+                }}
+              >
+                🧊 Révoquer (geler)
+              </CrystalButton>
+            )}
 
-              {showReject && (
-                <button
-                  className="btn btn--ghost"
-                  type="button"
-                  disabled={isPending || (canReject ? !canReject(item) : false)}
-                  onClick={async () => {
-                    try {
-                      await onReject?.(item.wallet);
-                    } catch (e) {
-                      alert(e?.shortMessage || e?.message || "Erreur reject");
-                    }
-                  }}
-                >
-                  ❌ Rejeter
-                </button>
-              )}
-            </div>
+            {showReject && (
+              <CrystalButton
+                tone="blue"
+                variant="ghost"
+                type="button"
+                disabled={isPending || (canReject ? !canReject(item) : false)}
+                onClick={async () => {
+                  try {
+                    await onReject?.(item.wallet);
+                  } catch (e) {
+                    alert(e?.shortMessage || e?.message || "Erreur reject");
+                  }
+                }}
+              >
+                ❌ Rejeter
+              </CrystalButton>
+            )}
+          </div>
+
           </div>
         ))}
       </div>

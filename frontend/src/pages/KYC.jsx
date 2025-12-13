@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAccount, useReadContract, useWriteContract } from "wagmi";
+import { waitForTransactionReceipt } from "wagmi/actions";
 import { keccak256, toBytes } from "viem";
+
+import { config } from "../web3/wagmiConfig.js";
 import { CONTRACTS } from "../config/contracts.js";
 
 import KYCJSON from "../abis/KYCRequestRegistry.json";
@@ -49,7 +52,6 @@ function loadKycForms() {
     return {};
   }
 }
-
 function saveKycForms(obj) {
   localStorage.setItem("kycForms", JSON.stringify(obj));
 }
@@ -59,42 +61,28 @@ function computeKycHash(payload) {
   return keccak256(toBytes(json));
 }
 
-function calcAge(birthDateISO) {
-  if (!birthDateISO) return null;
-  const birth = new Date(birthDateISO);
+function calcAge(birthDateStr) {
+  if (!birthDateStr) return null;
+  const birth = new Date(birthDateStr);
   if (Number.isNaN(birth.getTime())) return null;
-
   const now = new Date();
-  let age = now.getFullYear() - birth.getFullYear();
-  const m = now.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
-  return age;
-}
-
-function kycMessage({ exists, approved, rejected, isVerified }) {
-  if (!exists) return { tone: "warn", text: "⚠️ Tu dois soumettre un KYC avant d’investir." };
-  if (rejected) return { tone: "danger", text: "❌ Ton KYC a été rejeté. Contacte le support." };
-  if (!approved) return { tone: "warn", text: "⏳ Ton KYC est en attente d’approbation." };
-  if (approved && !isVerified)
-    return {
-      tone: "warn",
-      text: "⚠️ Ton KYC est validé, mais tu n’es pas autorisé à acheter (compte gelé / contraintes légales).",
-    };
-  return { tone: "ok", text: "✅ KYC validé et autorisé à acheter." };
+  const hadBirthdayThisYear =
+    now >= new Date(now.getFullYear(), birth.getMonth(), birth.getDate());
+  return now.getFullYear() - birth.getFullYear() - (hadBirthdayThisYear ? 0 : 1);
 }
 
 export default function KYC() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chain } = useAccount();
   const { writeContract, isPending } = useWriteContract();
 
   const wallet = address || "";
+  const [txHash, setTxHash] = useState(null);
 
-  // -------------------- On-chain status --------------------
   const { data: req } = useReadContract({
     address: CONTRACTS.kycRequestRegistry,
     abi: KYCABI,
     functionName: "requests",
-    args: isValidAddress(wallet) ? [wallet] : undefined,
+    args: isConnected && isValidAddress(wallet) ? [wallet] : undefined,
     query: { enabled: isConnected && isValidAddress(wallet) },
   });
 
@@ -102,7 +90,7 @@ export default function KYC() {
     address: CONTRACTS.identityRegistry,
     abi: IdentityABI,
     functionName: "isVerified",
-    args: isValidAddress(wallet) ? [wallet] : undefined,
+    args: isConnected && isValidAddress(wallet) ? [wallet] : undefined,
     query: { enabled: isConnected && isValidAddress(wallet) },
   });
 
@@ -114,29 +102,31 @@ export default function KYC() {
 
     if (Array.isArray(req) && req.length >= 4) {
       kycHash = req[0];
-      exists = Boolean(req[1]);
-      approved = Boolean(req[2]);
-      rejected = Boolean(req[3]);
+      exists = !!req[1];
+      approved = !!req[2];
+      rejected = !!req[3];
     }
 
-    return { exists, approved, rejected, isVerified: Boolean(isVerified), kycHash };
+    return {
+      exists,
+      approved,
+      rejected,
+      isVerified: Boolean(isVerified),
+      kycHash,
+    };
   }, [req, isVerified]);
 
-  // -------------------- local saved --------------------
   const savedLocal = useMemo(() => {
     if (!wallet) return null;
     const all = loadKycForms();
     const k1 = wallet.toLowerCase();
-    const k2 = wallet;
-    return all[k1] || all[k2] || null;
+    return all[k1] || all[wallet] || null;
   }, [wallet]);
 
-  const hasLocal = Boolean(savedLocal?.form);
+  const hasLocal = Boolean(savedLocal);
 
-  // -------------------- edit mode --------------------
   const [editMode, setEditMode] = useState(false);
 
-  // -------------------- form state --------------------
   const [form, setForm] = useState({
     firstname: "",
     lastname: "",
@@ -149,31 +139,17 @@ export default function KYC() {
   });
 
   const [files, setFiles] = useState({
-    idDoc: null, // { name, type, size, dataUrl }
+    idDoc: null,
     proofOfAddress: null,
     taxNotice: null,
   });
 
-  // Pré-remplissage + gestion cas "on-chain existe mais pas local"
   useEffect(() => {
-    if (!isConnected || !wallet) return;
-
-    if (savedLocal?.form) {
-      setForm((prev) => ({ ...prev, ...savedLocal.form }));
-      setFiles((prev) => ({ ...prev, ...(savedLocal.files || {}) }));
-      setEditMode(false);
-      return;
-    }
-
-    // si pas de local mais déjà une demande on-chain => on laisse saisir
-    if (onchain.exists) {
-      setEditMode(true);
-    } else {
-      setEditMode(true); // premier KYC => saisie
-    }
-  }, [isConnected, wallet, savedLocal, onchain.exists]);
-
-  const inputDisabled = hasLocal ? !editMode : false;
+    if (!savedLocal) return;
+    setForm((prev) => ({ ...prev, ...(savedLocal.form || {}) }));
+    setFiles((prev) => ({ ...prev, ...(savedLocal.files || {}) }));
+    setEditMode(false);
+  }, [savedLocal]);
 
   function updateField(e) {
     setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
@@ -183,7 +159,7 @@ export default function KYC() {
     if (!file) return;
 
     if (file.size > 2.5 * 1024 * 1024) {
-      alert("Fichier trop lourd (> 2.5MB). Réduis ou compresse.");
+      alert("Fichier trop lourd (> 2.5MB). Compresse (photo/pdf) puis réessaie.");
       return;
     }
 
@@ -201,33 +177,27 @@ export default function KYC() {
     saveKycForms(all);
   }
 
-  // Compliance
-  const age = calcAge(form.birthDate);
-  const complianceError = useMemo(() => {
-    if (!form.birthDate) return "Date de naissance requise.";
+  function validateComplianceLocal() {
+    const age = calcAge(form.birthDate);
     if (age === null) return "Date de naissance invalide.";
     if (age < 18) return "Tu dois avoir 18 ans minimum.";
     if (form.nationality !== "France") return "Nationalité non éligible (exigé : France).";
     if (form.taxCountry !== "France") return "Résidence fiscale non éligible (exigé : France).";
     return null;
-  }, [form.birthDate, form.nationality, form.taxCountry, age]);
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
+    setTxHash(null);
 
-    if (!isConnected) {
-      alert("Connecte ton wallet d’abord.");
-      return;
-    }
+    if (!isConnected) return alert("Connecte ton wallet d’abord.");
+    if (hasLocal && !editMode) return alert("Clique sur « Modifier mes infos » avant de re-soumettre.");
 
-    if (complianceError) {
-      alert(`Non autorisé : ${complianceError}`);
-      return;
-    }
+    const err = validateComplianceLocal();
+    if (err) return alert(`Non autorisé : ${err}`);
 
     if (!files.idDoc || !files.proofOfAddress) {
-      alert("Merci d’uploader au minimum : pièce d’identité + justificatif de domicile.");
-      return;
+      return alert("Merci d’uploader au minimum : pièce d’identité + justificatif de domicile.");
     }
 
     const fileMeta = {
@@ -238,29 +208,31 @@ export default function KYC() {
       taxNotice: files.taxNotice ? { name: files.taxNotice.name, type: files.taxNotice.type, size: files.taxNotice.size } : null,
     };
 
-    const payload = {
-      wallet,
-      form,
-      files, // base64 local
-      createdAt: Date.now(),
-    };
-
-    const hashPayload = { wallet, form, fileMeta };
-    const documentHash = computeKycHash(hashPayload);
+    const payload = { wallet, form, files, createdAt: Date.now() };
+    const documentHash = computeKycHash({ wallet, form, fileMeta });
 
     try {
-      // 1) save local
       saveLocal(payload);
 
-      // 2) send on-chain
-      await writeContract({
+      if (chain?.id !== 11155111) {
+        alert("⚠️ Change de réseau : Sepolia requis pour soumettre le KYC.");
+        return;
+      }
+
+      const tx = await writeContract({
         address: CONTRACTS.kycRequestRegistry,
         abi: KYCABI,
         functionName: "submitKYC",
         args: [documentHash],
       });
 
-      alert("KYC soumis. En attente de validation.");
+      const hash = typeof tx === "string" ? tx : tx?.hash;
+      if (!hash) return alert("Transaction envoyée, mais hash introuvable. Regarde la console.");
+
+      setTxHash(hash);
+      await waitForTransactionReceipt(config, { hash });
+
+      alert("✅ KYC soumis et confirmé on-chain.");
       setEditMode(false);
     } catch (e2) {
       console.error(e2);
@@ -277,7 +249,21 @@ export default function KYC() {
     );
   }
 
-  const msg = kycMessage(onchain);
+  const disableInputs = hasLocal && !editMode;
+  const age = calcAge(form.birthDate);
+
+  // ✅ petit style file input (sans toucher ton CSS global)
+  const fileInputStyle = {
+    display: "block",
+    width: "100%",
+    marginTop: 6,
+    padding: "10px 12px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,.16)",
+    background: "rgba(0,0,0,.25)",
+    color: "rgba(255,255,255,.92)",
+    fontFamily: "var(--font2)",
+  };
 
   return (
     <div className="container">
@@ -287,14 +273,24 @@ export default function KYC() {
           <p className="muted" style={{ margin: 0 }}>
             Wallet : <code>{wallet}</code>
           </p>
+          {chain?.name && (
+            <p className="muted" style={{ margin: "6px 0 0" }}>
+              Réseau : <strong>{chain.name}</strong>
+            </p>
+          )}
         </div>
 
         <div className="flex" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <span className={`badge badge--${msg.tone}`}>{msg.text}</span>
-
-          {(hasLocal || onchain.exists) && !editMode && (
-            <button className="btn btn--ghost" type="button" onClick={() => setEditMode(true)}>
-              ✏️ Modifier mes infos
+          {hasLocal && !editMode && (
+            <button className="crystalBtn crystalBtn--ghost" type="button" onClick={() => setEditMode(true)}>
+              <span className="crystalBtn__shimmer" />
+              <span style={{ position: "relative", zIndex: 2 }}>✏️ Modifier mes infos</span>
+            </button>
+          )}
+          {hasLocal && editMode && (
+            <button className="crystalBtn crystalBtn--ghost" type="button" onClick={() => setEditMode(false)}>
+              <span className="crystalBtn__shimmer" />
+              <span style={{ position: "relative", zIndex: 2 }}>Annuler</span>
             </button>
           )}
         </div>
@@ -325,9 +321,24 @@ export default function KYC() {
             </p>
           )}
 
-          {complianceError && editMode && (
-            <p style={{ marginTop: 10, color: "#b00020" }}>
-              ⚠️ Non autorisé : {complianceError}
+          {txHash && (
+            <p style={{ marginTop: 10 }}>
+              TX : <code>{txHash}</code>{" "}
+              <a
+                className="link"
+                href={`https://sepolia.etherscan.io/tx/${txHash}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ marginLeft: 8 }}
+              >
+                Ouvrir ↗
+              </a>
+            </p>
+          )}
+
+          {onchain.approved && !onchain.isVerified && (
+            <p className="muted" style={{ marginTop: 10 }}>
+              ⚠️ Ton KYC est validé, mais tu n’es pas autorisé à acheter (compte gelé / contraintes légales).
             </p>
           )}
         </div>
@@ -338,46 +349,40 @@ export default function KYC() {
           <div className="flex between" style={{ gap: 12, flexWrap: "wrap" }}>
             <h3 style={{ margin: 0 }}>Informations KYC</h3>
             <span className={`badge ${editMode || !hasLocal ? "badge--warn" : "badge--ok"}`}>
-              {editMode || !hasLocal ? "Édition" : "Enregistré (local)"}
+              {editMode || !hasLocal ? "Édition" : "Enregistré"}
             </span>
           </div>
-
-          {!hasLocal && (
-            <p className="muted" style={{ marginTop: 10 }}>
-              Aucun KYC enregistré côté navigateur. Remplis le formulaire ci-dessous.
-            </p>
-          )}
-
-          {hasLocal && !editMode && (
-            <p className="muted" style={{ marginTop: 10 }}>
-              Tes infos sont pré-remplies. Clique sur “Modifier mes infos” pour changer.
-            </p>
-          )}
 
           <form onSubmit={handleSubmit} style={{ marginTop: 14, display: "grid", gap: 12 }}>
             <div className="grid2">
               <div>
-                <label>Prénom</label>
-                <input name="firstname" value={form.firstname} onChange={updateField} disabled={inputDisabled} required />
+                <label className="label">Prénom</label>
+                <input className="input" name="firstname" value={form.firstname} onChange={updateField} disabled={disableInputs} required />
               </div>
               <div>
-                <label>Nom</label>
-                <input name="lastname" value={form.lastname} onChange={updateField} disabled={inputDisabled} required />
+                <label className="label">Nom</label>
+                <input className="input" name="lastname" value={form.lastname} onChange={updateField} disabled={disableInputs} required />
               </div>
             </div>
 
             <div className="grid2">
               <div>
-                <label>Date de naissance</label>
-                <input type="date" name="birthDate" value={form.birthDate} onChange={updateField} disabled={inputDisabled} required />
-                {age !== null && <p className="muted" style={{ marginTop: 6 }}>Âge : {age} ans</p>}
+                <label className="label">Date de naissance</label>
+                <input className="input" type="date" name="birthDate" value={form.birthDate} onChange={updateField} disabled={disableInputs} required />
+                {age !== null && (
+                  <p className="muted" style={{ marginTop: 6 }}>
+                    Âge : <strong>{age}</strong>
+                  </p>
+                )}
               </div>
 
               <div>
-                <label>Nationalité</label>
-                <select name="nationality" value={form.nationality} onChange={updateField} disabled={inputDisabled}>
+                <label className="label">Nationalité</label>
+                <select className="input" name="nationality" value={form.nationality} onChange={updateField} disabled={disableInputs}>
                   {COUNTRIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -385,19 +390,23 @@ export default function KYC() {
 
             <div className="grid2">
               <div>
-                <label>Résidence fiscale</label>
-                <select name="taxCountry" value={form.taxCountry} onChange={updateField} disabled={inputDisabled}>
+                <label className="label">Résidence fiscale</label>
+                <select className="input" name="taxCountry" value={form.taxCountry} onChange={updateField} disabled={disableInputs}>
                   {COUNTRIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label>Pays</label>
-                <select name="country" value={form.country} onChange={updateField} disabled={inputDisabled}>
+                <label className="label">Pays</label>
+                <select className="input" name="country" value={form.country} onChange={updateField} disabled={disableInputs}>
                   {COUNTRIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -405,70 +414,52 @@ export default function KYC() {
 
             <div className="grid2">
               <div>
-                <label>Rue</label>
-                <input name="street" value={form.street} onChange={updateField} disabled={inputDisabled} required />
+                <label className="label">Rue</label>
+                <input className="input" name="street" value={form.street} onChange={updateField} disabled={disableInputs} required />
               </div>
               <div>
-                <label>Ville</label>
-                <input name="city" value={form.city} onChange={updateField} disabled={inputDisabled} required />
+                <label className="label">Ville</label>
+                <input className="input" name="city" value={form.city} onChange={updateField} disabled={disableInputs} required />
               </div>
             </div>
 
-            <hr style={{ opacity: 0.25, margin: "6px 0" }} />
+            <div className="divider" />
 
             <div>
-              <label>Pièce d’identité (PDF/JPG/PNG)</label>
-              <input type="file" accept="application/pdf,image/*" disabled={inputDisabled}
-                onChange={(e) => handleFileChange("idDoc", e.target.files?.[0])}
-              />
+              <label className="label">Pièce d’identité (PDF/JPG/PNG)</label>
+              <input style={fileInputStyle} type="file" accept="application/pdf,image/*" disabled={disableInputs} onChange={(e) => handleFileChange("idDoc", e.target.files?.[0])} />
               {files.idDoc?.name && <p className="muted">Fichier : {files.idDoc.name}</p>}
             </div>
 
             <div>
-              <label>Justificatif de domicile</label>
-              <input type="file" accept="application/pdf,image/*" disabled={inputDisabled}
-                onChange={(e) => handleFileChange("proofOfAddress", e.target.files?.[0])}
-              />
+              <label className="label">Justificatif de domicile</label>
+              <input style={fileInputStyle} type="file" accept="application/pdf,image/*" disabled={disableInputs} onChange={(e) => handleFileChange("proofOfAddress", e.target.files?.[0])} />
               {files.proofOfAddress?.name && <p className="muted">Fichier : {files.proofOfAddress.name}</p>}
             </div>
 
             <div>
-              <label>Dernier avis d’imposition (optionnel)</label>
-              <input type="file" accept="application/pdf,image/*" disabled={inputDisabled}
-                onChange={(e) => handleFileChange("taxNotice", e.target.files?.[0])}
-              />
+              <label className="label">Dernier avis d’imposition (optionnel)</label>
+              <input style={fileInputStyle} type="file" accept="application/pdf,image/*" disabled={disableInputs} onChange={(e) => handleFileChange("taxNotice", e.target.files?.[0])} />
               {files.taxNotice?.name && <p className="muted">Fichier : {files.taxNotice.name}</p>}
             </div>
 
             <div className="flex" style={{ gap: 10, flexWrap: "wrap", marginTop: 6 }}>
-              <button
-                className="btn"
-                type="submit"
-                disabled={isPending || inputDisabled || Boolean(complianceError)}
-                title={inputDisabled ? "Clique sur Modifier d’abord" : ""}
-              >
-                {isPending ? "Envoi..." : (onchain.exists ? "Mettre à jour & soumettre" : "Soumettre KYC")}
+              <button className="crystalBtn crystalBtn--gold" type="submit" disabled={isPending}>
+                <span className="crystalBtn__shimmer" />
+                <span style={{ position: "relative", zIndex: 2 }}>
+                  {isPending
+                    ? "Envoi..."
+                    : hasLocal
+                      ? editMode
+                        ? "Mettre à jour & re-soumettre"
+                        : "Soumettre"
+                      : "Soumettre KYC"}
+                </span>
               </button>
-
-              {editMode && hasLocal && (
-                <button className="btn btn--ghost" type="button" onClick={() => {
-                  // reset to saved local + exit edit
-                  const all = loadKycForms();
-                  const s = all[wallet.toLowerCase()] || all[wallet] || null;
-                  if (s?.form) {
-                    setForm((prev) => ({ ...prev, ...s.form }));
-                    setFiles((prev) => ({ ...prev, ...(s.files || {}) }));
-                  }
-                  setEditMode(false);
-                }}>
-                  Annuler
-                </button>
-              )}
             </div>
 
             <p className="muted" style={{ marginTop: 6 }}>
-              ⚠️ Version simple : documents stockés côté navigateur (localStorage).  
-              Pour prod : stockage sécurisé (DB) ou IPFS + chiffrement, et on-chain uniquement un hash.
+              ⚠️ Version simple : les documents sont stockés côté navigateur (localStorage). En prod : stockage sécurisé + hash on-chain.
             </p>
           </form>
         </div>

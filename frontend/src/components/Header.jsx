@@ -6,6 +6,7 @@ import IdentityJSON from "../abis/IdentityRegistry.json";
 import { CONTRACTS } from "../config/contracts.js";
 import { useKycStatus } from "../hooks/useKycStatus.js";
 import KycBadge from "./KycBadge.jsx";
+import CrystalButton from "./CrystalButton.jsx";
 
 const IdentityABI = IdentityJSON.abi;
 
@@ -35,99 +36,82 @@ export default function Header() {
 
   const kyc = useKycStatus(address);
 
-  // Menu mobile
   const [open, setOpen] = useState(false);
 
-  // Ferme le menu quand on change de page
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
+  useEffect(() => setOpen(false), [pathname]);
 
-  // Choix "smart" du meilleur connector (MetaMask/injected)
   const preferredConnector = useMemo(() => {
     if (!connectors?.length) return null;
-    // wagmi injected est souvent le bon (MetaMask, Rabby, etc.)
     const injected = connectors.find((c) => c.type === "injected");
     return injected || connectors[0];
   }, [connectors]);
 
   return (
     <header className="header">
-      <div className="header__left">
-        <Link to="/" className="brand" onClick={() => setOpen(false)}>
-          <img className="brand__logo" src="/images/2ID_icon.png" alt="2ID" />
-          <span className="brand__name">2ID</span>
-        </Link>
+      <div className="header__inner">
+        <div className="header__left">
+          <Link to="/" className="brand" onClick={() => setOpen(false)}>
+            <img className="brand__logo" src="/images/logo_2ID.svg" alt="2ID" />
+          </Link>
 
-        {/* NAV desktop */}
-        <nav className="nav nav--desktop">
-          <Link className={`nav__link ${pathname === "/" ? "is-active" : ""}`} to="/">
-            Market
-          </Link>
-          <Link className={`nav__link ${pathname === "/kyc" ? "is-active" : ""}`} to="/kyc">
-            KYC
-          </Link>
-          {isAdmin && (
-            <Link className={`nav__link ${pathname === "/admin" ? "is-active" : ""}`} to="/admin">
-              Admin
+          <nav className="nav nav--desktop">
+            <Link className={`nav__link ${pathname === "/market" ? "is-active" : ""}`} to="/market">
+              Nos Offres
             </Link>
+            <Link className={`nav__link ${pathname === "/kyc" ? "is-active" : ""}`} to="/kyc">
+              KYC
+            </Link>
+            {isAdmin && (
+              <Link className={`nav__link ${pathname === "/admin" ? "is-active" : ""}`} to="/admin">
+                Admin
+              </Link>
+            )}
+          </nav>
+        </div>
+
+        <div className="header__right">
+          {isConnected && <KycBadge {...kyc} />}
+
+          {isConnected ? (
+            <>
+              <span className="badge">🟢 {shortAddr(address)}</span>
+              <CrystalButton tone="blue" variant="ghost" type="button" onClick={() => disconnect()}>
+                Se déconnecter
+              </CrystalButton>
+            </>
+          ) : (
+            <CrystalButton
+              tone="gold"
+              type="button"
+              onClick={() => preferredConnector && connect({ connector: preferredConnector })}
+              disabled={!preferredConnector || connectStatus === "pending"}
+              title={!preferredConnector ? "Aucun wallet détecté (MetaMask?)" : ""}
+            >
+              {connectStatus === "pending" ? "Connexion…" : "Se connecter"}
+            </CrystalButton>
           )}
-        </nav>
-      </div>
 
-      <div className="header__right">
-        {/* Badge KYC (desktop) */}
-        {isConnected && (
-          <div className="kycWrap kycWrap--desktop">
-            <KycBadge {...kyc} />
-          </div>
-        )}
-
-        {/* Connexion */}
-        {isConnected ? (
-          <>
-            <span className="badge badge--neutral">🟢 {shortAddr(address)}</span>
-            <button className="btn btn--ghost" type="button" onClick={() => disconnect()}>
-              Se déconnecter
-            </button>
-          </>
-        ) : (
-          <button
-            className="btn"
+          <CrystalButton
+            tone="blue"
+            variant="ghost"
+            className="burger"
             type="button"
-            onClick={() => preferredConnector && connect({ connector: preferredConnector })}
-            disabled={!preferredConnector || connectStatus === "pending"}
-            title={!preferredConnector ? "Aucun wallet détecté (MetaMask?)" : ""}
+            aria-label="Ouvrir le menu"
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
           >
-            {connectStatus === "pending" ? "Connexion…" : "Se connecter"}
-          </button>
-        )}
-
-        {/* Burger (mobile) */}
-        <button
-          className="btn btn--ghost burger"
-          type="button"
-          aria-label="Ouvrir le menu"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-        >
-          {/* icône simple */}
-          <span className="burger__lines" />
-        </button>
+            <span className="burger__lines" />
+          </CrystalButton>
+        </div>
       </div>
 
-      {/* NAV mobile */}
       {open && (
         <div className="mobileNav">
           <div className="mobileNav__inner">
-            {isConnected && (
-              <div className="kycWrap kycWrap--mobile">
-                <KycBadge {...kyc} />
-              </div>
-            )}
+            {isConnected && <KycBadge {...kyc} />}
 
-            <Link className="mobileNav__link" to="/" onClick={() => setOpen(false)}>
-              Market
+            <Link className="mobileNav__link" to="/market" onClick={() => setOpen(false)}>
+              Nos biens
             </Link>
             <Link className="mobileNav__link" to="/kyc" onClick={() => setOpen(false)}>
               KYC

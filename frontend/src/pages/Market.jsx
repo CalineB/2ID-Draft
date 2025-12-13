@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { readContract } from "wagmi/actions";
 import { config } from "../web3/wagmiConfig.js";
@@ -7,27 +7,38 @@ import { CONTRACTS } from "../config/contracts.js";
 import TokenFactoryJSON from "../abis/TokenFactory.json";
 import HouseTokenJSON from "../abis/HouseSecurityToken.json";
 
+import CrystalButton from "../components/CrystalButton.jsx";
+
 const TokenFactoryABI = TokenFactoryJSON.abi;
 const HouseTokenABI = HouseTokenJSON.abi;
+
+function riskClass(riskTier) {
+  const r = String(riskTier || "").toLowerCase();
+  if (r === "low") return "risk--low";
+  if (r === "high") return "risk--high";
+  return "risk--med";
+}
 
 export default function Market() {
   const [houses, setHouses] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const [metaMap] = useState(() => {
+  // ✅ IMPORTANT: lire metaMap via useMemo (sinon état figé + re-render pas propre)
+  const metaMap = useMemo(() => {
     try {
       return JSON.parse(localStorage.getItem("propertyMeta") || "{}");
     } catch {
       return {};
     }
-  });
+  }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
       try {
         setLoading(true);
 
-        // 1) nombre de tokens créés par la factory
         const count = await readContract(config, {
           address: CONTRACTS.tokenFactory,
           abi: TokenFactoryABI,
@@ -46,33 +57,17 @@ export default function Market() {
           });
 
           const [name, symbol, totalSupply, maxSupply] = await Promise.all([
-            readContract(config, {
-              address: tokenAddr,
-              abi: HouseTokenABI,
-              functionName: "name",
-            }),
-            readContract(config, {
-              address: tokenAddr,
-              abi: HouseTokenABI,
-              functionName: "symbol",
-            }),
-            readContract(config, {
-              address: tokenAddr,
-              abi: HouseTokenABI,
-              functionName: "totalSupply",
-            }),
-            readContract(config, {
-              address: tokenAddr,
-              abi: HouseTokenABI,
-              functionName: "maxSupply",
-            }),
+            readContract(config, { address: tokenAddr, abi: HouseTokenABI, functionName: "name" }),
+            readContract(config, { address: tokenAddr, abi: HouseTokenABI, functionName: "symbol" }),
+            readContract(config, { address: tokenAddr, abi: HouseTokenABI, functionName: "totalSupply" }),
+            readContract(config, { address: tokenAddr, abi: HouseTokenABI, functionName: "maxSupply" }),
           ]);
 
-          const ts = totalSupply ?? 0n;
-          const ms = maxSupply ?? 0n;
+          const ts = BigInt(totalSupply ?? 0n);
+          const ms = BigInt(maxSupply ?? 0n);
           const progress = ms > 0n ? Number((ts * 100n) / ms) : 0;
 
-          const key = tokenAddr.toLowerCase();
+          const key = String(tokenAddr).toLowerCase();
           const meta = metaMap[key] || null;
 
           list.push({
@@ -86,163 +81,140 @@ export default function Market() {
           });
         }
 
-        const published = list.filter(
-          (h) => h.meta && h.meta.published === true
-        );
+        const published = list.filter((h) => h.meta && h.meta.published === true);
 
-        setHouses(published);
+        if (!cancelled) setHouses(published);
       } catch (e) {
         console.error("Erreur load market:", e);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [metaMap]);
 
   if (loading) {
-    return <p>Chargement des biens...</p>;
+    return (
+      <div className="container">
+        <div className="card">
+          <div className="card__body">
+            <p className="muted">Chargement des biens…</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!houses.length) {
     return (
-      <div style={{ maxWidth: 900, margin: "0 auto", textAlign: "center" }}>
-        <h1>Biens disponibles</h1>
-        <p>Aucun bien n&apos;est encore publié dans le market.</p>
-        <p style={{ fontSize: "0.9rem", color: "#666" }}>
-          Publie un bien depuis l&apos;espace admin (bouton &quot;📢 Publier
-          dans le market&quot;).
-        </p>
+      <div className="container">
+        <div className="card">
+          <div className="card__body" style={{ textAlign: "center" }}>
+            <h1>Biens disponibles</h1>
+            <p className="muted">Aucun bien n’est encore publié dans le market.</p>
+            <p className="muted" style={{ fontSize: ".95rem" }}>
+              Publie un bien depuis l’espace admin (bouton “📢 Publier dans le market”).
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-      <h1 style={{ textAlign: "center", marginBottom: "1.5rem" }}>
-        Biens disponibles
-      </h1>
+    <div className="container">
+      <div className="catalogHeader">
+        <div>
+          <h1 className="catalogTitle">Biens disponibles</h1>
+          <div className="catalogMeta">{houses.length} opportunité(s) publiées</div>
+        </div>
+        <div className="muted">Catalogue • Security tokens • DeFi compliant</div>
+      </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-          gap: "1.5rem",
-          justifyItems: "center",
-        }}
-      >
+      {/* ✅ IMPORTANT: on utilise TES classes (dark) -> plus de blanc sur blanc */}
+      <div className="cards-grid">
         {houses.map((h) => {
           const meta = h.meta || {};
+          const location = [meta.city, meta.country].filter(Boolean).join(", ");
+          const price = meta.price ? Number(meta.price) : null;
+
+          // champs "luxe" (optionnels)
+          const targetYield = meta.yield ? Number(meta.yield) : null; // %
+          const maturity = meta.maturityMonths || meta.maturity || null; // months
+          const riskTier = meta.riskTier || meta.risk || "med"; // low/med/high
+
           return (
-            <div
-              key={h.address}
-              style={{
-                width: "100%",
-                maxWidth: 320,
-                border: "1px solid #ddd",
-                borderRadius: 12,
-                padding: "0.75rem",
-                boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-                background: "#fff",
-              }}
-            >
-              {meta.imageDataUrl && (
-                <div
-                  style={{
-                    width: "100%",
-                    marginBottom: "0.5rem",
-                    display: "flex",
-                    justifyContent: "center",
-                  }}
-                >
-                  <img
-                    src={meta.imageDataUrl}
-                    alt={meta.addressLine || h.name}
-                    style={{
-                      width: "100%",
-                      height: 180,
-                      objectFit: "cover",
-                      borderRadius: 10,
-                    }}
-                  />
+            <article key={h.address} className="propertyCard">
+              <div
+                className="propertyCard__media"
+                style={
+                  meta.imageDataUrl
+                    ? {
+                        backgroundImage: `url(${meta.imageDataUrl})`,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                      }
+                    : undefined
+                }
+              />
+
+              <div className="propertyCard__body">
+                <div className="propertyCard__top">
+                  <div>
+                    <h2 className="propertyCard__name">{meta.name || h.name}</h2>
+                    <div className="propertyCard__sym">
+                      {h.symbol} · {location || "—"}
+                    </div>
+                  </div>
+
+                  <span className={`pill ${riskClass(riskTier)}`}>
+                    <span className="pill__label">Risque</span> {String(riskTier).toUpperCase()}
+                  </span>
                 </div>
-              )}
 
-              <div style={{ flexGrow: 1 }}>
-                <h2 style={{ margin: "0 0 0.25rem 0", fontSize: "1.1rem" }}>
-                  {h.name}
-                </h2>
-                <p style={{ margin: 0, color: "#555", fontSize: "0.9rem" }}>
-                  {meta.addressLine && (
-                    <>
-                      {meta.addressLine}
-                      <br />
-                    </>
-                  )}
-                  {meta.city && meta.country && (
-                    <>
-                      {meta.city}, {meta.country}
-                    </>
-                  )}
-                </p>
+                <div className="pills">
+                  <span className="pill">
+                    <span className="pill__label">Prix</span>{" "}
+                    {price !== null ? `${price.toLocaleString("fr-FR")} €` : "—"}
+                  </span>
 
-                <p style={{ margin: "0.5rem 0", fontSize: "0.9rem" }}>
-                  <strong>Security Token :</strong> {h.symbol}
-                  <br />
-                  <strong>Tokens vendus :</strong>{" "}
-                  {String(h.totalSupply)} / {String(h.maxSupply)}
-                </p>
+                  <span className="pill">
+                    <span className="pill__label">Yield cible</span>{" "}
+                    {targetYield !== null ? `${targetYield}%` : "—"}
+                  </span>
 
-                {meta.price && (
-                  <p style={{ margin: "0.25rem 0", fontSize: "0.9rem" }}>
-                    <strong>Prix du bien :</strong> {meta.price} €
-                  </p>
-                )}
-
-                <div
-                  style={{
-                    background: "#eee",
-                    height: 8,
-                    borderRadius: 4,
-                    overflow: "hidden",
-                    margin: "0.5rem 0",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${h.progress}%`,
-                      height: "100%",
-                      background: "#4caf50",
-                    }}
-                  />
+                  <span className="pill">
+                    <span className="pill__label">Maturité</span> {maturity ? `${maturity} mois` : "—"}
+                  </span>
                 </div>
-                <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.9rem" }}>
-                  Avancement : {h.progress}%
-                </p>
-              </div>
 
-              <div style={{ textAlign: "center", marginTop: "0.5rem" }}>
-                <Link to={`/house/${h.address}`}>
-                  <button
-                    style={{
-                      padding: "0.4rem 0.8rem",
-                      borderRadius: 999,
-                      border: "none",
-                      background: "#111827",
-                      color: "#fff",
-                      cursor: "pointer",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    Voir le détail / Investir
-                  </button>
-                </Link>
+                <div className="progress">
+                  <div className="progress__bar">
+                    <div className="progress__fill" style={{ width: `${h.progress}%` }} />
+                  </div>
+                  <div className="progress__meta">
+                    <span>
+                      {String(h.totalSupply)} / {String(h.maxSupply)} tokens
+                    </span>
+                    <span>{h.progress}%</span>
+                  </div>
+                </div>
+
+                <div className="addr">Token: {h.address}</div>
+
+                <div style={{ marginTop: 6 }}>
+                  <Link to={`/house/${h.address}`} style={{ display: "inline-block" }}>
+                    <CrystalButton tone="gold" type="button">
+                      Voir le détail / Investir
+                    </CrystalButton>
+                  </Link>
+                </div>
               </div>
-            </div>
+            </article>
           );
         })}
       </div>

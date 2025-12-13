@@ -1,8 +1,8 @@
 import React from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { CONTRACTS } from "../config/contracts.js";
-
 import IdentityJSON from "../abis/IdentityRegistry.json";
+
 const IdentityABI = IdentityJSON.abi;
 
 export default function Dashboard() {
@@ -13,38 +13,80 @@ export default function Dashboard() {
     abi: IdentityABI,
     functionName: "isVerified",
     args: address ? [address] : undefined,
-    query: {
-      enabled: isConnected && !!address,
-    },
+    query: { enabled: isConnected && !!address },
   });
 
   if (!isConnected) {
-    return <p>Connecte ton wallet pour accéder à ton espace investisseur.</p>;
+    return (
+      <div className="container">
+        <div className="card">
+          <div className="card__body">
+            <h1 style={{ marginBottom: 8 }}>Espace investisseur</h1>
+            <p className="muted">Connecte ton wallet pour accéder à ton espace et suivre tes positions.</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div style={{ maxWidth: 800 }}>
-      <h1>Mon espace investisseur</h1>
+    <div className="container" style={{ display: "grid", gap: 14 }}>
+      <div className="card">
+        <div className="card__body">
+          <h1 style={{ marginBottom: 10 }}>Mon espace investisseur</h1>
+          <div className="pill">
+            <span className="pill__label">Wallet</span>
+            <span className="addr" style={{ maxWidth: 520 }}>{address}</span>
+          </div>
 
-      <p>
-        <strong>Wallet connecté :</strong> {address}
-      </p>
+          <div className="divider" />
 
-      <h2>Statut KYC</h2>
-      {isVerified ? (
-        <p>✅ Ton wallet est vérifié. Tu peux investir sur les biens disponibles.</p>
-      ) : (
-        <p>
-          ⏳ Ton KYC n'est pas encore validé. Tu peux suivre son statut dans l’onglet
-          KYC.
-        </p>
-      )}
+          <h2 style={{ marginBottom: 10 }}>Statut KYC</h2>
+          {isVerified ? (
+            <div className="pill risk--low">✅ Vérifié — autorisé à investir</div>
+          ) : (
+            <div className="pill risk--med">⏳ En attente — consulte l’onglet KYC</div>
+          )}
+        </div>
+      </div>
 
-      <h2>Mes investissements</h2>
-      <p>
-        La liste détaillée de tes tokens immobiliers pourra être affichée ici
-        (à partir des contrats HouseSecurityToken / HouseEthSale).
-      </p>
+      <div className="cards-grid">
+        <div className="propertyCard">
+          <div className="propertyCard__media" />
+          <div className="propertyCard__body">
+            <h3 className="propertyCard__name">Mes investissements</h3>
+            <p className="muted" style={{ margin: 0 }}>
+              Ici tu affiches la liste de tes tokens (HouseSecurityToken / HouseEthSale).
+            </p>
+            <div className="divider" />
+            <div className="pills">
+              <div className="pill"><span className="pill__label">Positions</span> —</div>
+              <div className="pill"><span className="pill__label">Exposition</span> —</div>
+              <div className="pill"><span className="pill__label">Rendement estimé</span> —</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="propertyCard">
+          <div className="propertyCard__media" />
+          <div className="propertyCard__body">
+            <h3 className="propertyCard__name">Distribution & cashflows</h3>
+            <p className="muted" style={{ margin: 0 }}>
+              Historique des coupons / distributions (on-chain events).
+            </p>
+          </div>
+        </div>
+
+        <div className="propertyCard">
+          <div className="propertyCard__media" />
+          <div className="propertyCard__body">
+            <h3 className="propertyCard__name">Documents</h3>
+            <p className="muted" style={{ margin: 0 }}>
+              Term sheet, conformité, reportings (PDF/IPFS).
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
