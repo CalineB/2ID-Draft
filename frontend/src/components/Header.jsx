@@ -1,13 +1,11 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import {
-  useAccount,
-  useReadContract,
-  useConnect,
-  useDisconnect,
-} from "wagmi";
+import { useAccount, useConnect, useDisconnect, useReadContract } from "wagmi";
+
 import IdentityJSON from "../abis/IdentityRegistry.json";
 import { CONTRACTS } from "../config/contracts.js";
+import { useKycStatus } from "../hooks/useKycStatus.js";
+import KycBadge from "./KycBadge.jsx";
 
 const IdentityABI = IdentityJSON.abi;
 
@@ -16,28 +14,17 @@ function shortAddr(a) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
 
-function Badge({ children, tone = "neutral" }) {
-  return <span className={`badge badge--${tone}`}>{children}</span>;
-}
-
 export default function Header() {
+  const { pathname } = useLocation();
   const { address, isConnected } = useAccount();
-  const { connect, connectors, isPending: isConnecting } = useConnect();
+
+  const { connectors, connect, status: connectStatus } = useConnect();
   const { disconnect } = useDisconnect();
-  const location = useLocation();
 
   const { data: ownerAddress } = useReadContract({
     address: CONTRACTS.identityRegistry,
     abi: IdentityABI,
     functionName: "owner",
-  });
-
-  const { data: isVerified } = useReadContract({
-    address: CONTRACTS.identityRegistry,
-    abi: IdentityABI,
-    functionName: "isVerified",
-    args: isConnected && address ? [address] : undefined,
-    query: { enabled: Boolean(isConnected && address) },
   });
 
   const isAdmin =
@@ -46,72 +33,113 @@ export default function Header() {
     ownerAddress &&
     address.toLowerCase() === ownerAddress.toLowerCase();
 
-  const injected = useMemo(() => {
-    // “injected” = MetaMask/Rabby/Trustwallet...Dex
-    return connectors.find((c) => c.id === "injected") || connectors[0];
-  }, [connectors]);
+  const kyc = useKycStatus(address);
 
-  const linkCls = (path) =>
-    `nav__link ${location.pathname === path ? "nav__link--active" : ""}`;
+  // Menu mobile
+  const [open, setOpen] = useState(false);
+
+  // Ferme le menu quand on change de page
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  // Choix "smart" du meilleur connector (MetaMask/injected)
+  const preferredConnector = useMemo(() => {
+    if (!connectors?.length) return null;
+    // wagmi injected est souvent le bon (MetaMask, Rabby, etc.)
+    const injected = connectors.find((c) => c.type === "injected");
+    return injected || connectors[0];
+  }, [connectors]);
 
   return (
     <header className="header">
-      <div className="header__inner">
-        <div className="brand">
-          <div className="brand__logo">2ID</div>
-        </div>
+      <div className="header__left">
+        <Link to="/" className="brand" onClick={() => setOpen(false)}>
+          <img className="brand__logo" src="/images/2ID_icon.png" alt="2ID" />
+          <span className="brand__name">2ID</span>
+        </Link>
 
-        <nav className="nav">
-          <Link className={linkCls("/market")} to="/market">
+        {/* NAV desktop */}
+        <nav className="nav nav--desktop">
+          <Link className={`nav__link ${pathname === "/" ? "is-active" : ""}`} to="/">
             Market
           </Link>
-          <Link className={linkCls("/kyc")} to="/kyc">
+          <Link className={`nav__link ${pathname === "/kyc" ? "is-active" : ""}`} to="/kyc">
             KYC
           </Link>
-          <Link className={linkCls("/dashboard")} to="/dashboard">
-            Dashboard
-          </Link>
           {isAdmin && (
-            <Link className={linkCls("/admin")} to="/admin">
+            <Link className={`nav__link ${pathname === "/admin" ? "is-active" : ""}`} to="/admin">
               Admin
             </Link>
           )}
         </nav>
-
-        <div className="header__right">
-          {isAdmin && <Badge tone="admin">Admin</Badge>}
-
-          {isConnected ? (
-            <>
-              <Badge tone="ok">Connecté · {shortAddr(address)}</Badge>
-              <Badge tone={isVerified ? "ok" : "warn"}>
-                KYC {isVerified ? "Validé" : "Non validé"}
-              </Badge>
-
-              <button
-                className="btn btn--ghost"
-                onClick={() => disconnect()}
-                type="button"
-              >
-                Se déconnecter
-              </button>
-            </>
-          ) : (
-            <>
-              <Badge tone="danger">Wallet non connecté</Badge>
-              <button
-                className="btn"
-                type="button"
-                disabled={!injected || isConnecting}
-                onClick={() => connect({ connector: injected })}
-                title={!injected ? "Aucun wallet détecté (MetaMask/Rabby...)" : ""}
-              >
-                {isConnecting ? "Connexion..." : "Se connecter"}
-              </button>
-            </>
-          )}
-        </div>
       </div>
+
+      <div className="header__right">
+        {/* Badge KYC (desktop) */}
+        {isConnected && (
+          <div className="kycWrap kycWrap--desktop">
+            <KycBadge {...kyc} />
+          </div>
+        )}
+
+        {/* Connexion */}
+        {isConnected ? (
+          <>
+            <span className="badge badge--neutral">🟢 {shortAddr(address)}</span>
+            <button className="btn btn--ghost" type="button" onClick={() => disconnect()}>
+              Se déconnecter
+            </button>
+          </>
+        ) : (
+          <button
+            className="btn"
+            type="button"
+            onClick={() => preferredConnector && connect({ connector: preferredConnector })}
+            disabled={!preferredConnector || connectStatus === "pending"}
+            title={!preferredConnector ? "Aucun wallet détecté (MetaMask?)" : ""}
+          >
+            {connectStatus === "pending" ? "Connexion…" : "Se connecter"}
+          </button>
+        )}
+
+        {/* Burger (mobile) */}
+        <button
+          className="btn btn--ghost burger"
+          type="button"
+          aria-label="Ouvrir le menu"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {/* icône simple */}
+          <span className="burger__lines" />
+        </button>
+      </div>
+
+      {/* NAV mobile */}
+      {open && (
+        <div className="mobileNav">
+          <div className="mobileNav__inner">
+            {isConnected && (
+              <div className="kycWrap kycWrap--mobile">
+                <KycBadge {...kyc} />
+              </div>
+            )}
+
+            <Link className="mobileNav__link" to="/" onClick={() => setOpen(false)}>
+              Market
+            </Link>
+            <Link className="mobileNav__link" to="/kyc" onClick={() => setOpen(false)}>
+              KYC
+            </Link>
+            {isAdmin && (
+              <Link className="mobileNav__link" to="/admin" onClick={() => setOpen(false)}>
+                Admin
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
 }

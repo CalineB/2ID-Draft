@@ -15,35 +15,8 @@ const KYCABI = KYCJSON.abi;
 const TokenFactoryABI = TokenFactoryJSON.abi;
 const HouseTokenABI = HouseTokenJSON.abi;
 
-const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
-
 function isValidAddress(addr) {
   return typeof addr === "string" && addr.startsWith("0x") && addr.length === 42;
-}
-
-function Card({ title, subtitle, children }) {
-  return (
-    <section
-      className="card card--solid"
-      style={{ padding: "1rem", borderRadius: 18 }}
-    >
-      {title && <h2 style={{ margin: 0 }}>{title}</h2>}
-      {subtitle && (
-        <p style={{ marginTop: "0.4rem", color: "rgba(15,18,23,0.62)" }}>
-          {subtitle}
-        </p>
-      )}
-      <div style={{ marginTop: "0.9rem" }}>{children}</div>
-    </section>
-  );
-}
-
-function Row({ children }) {
-  return <div style={{ display: "grid", gap: "0.6rem" }}>{children}</div>;
-}
-
-function Badge({ children, tone = "neutral" }) {
-  return <span className={`badge badge--${tone}`}>{children}</span>;
 }
 
 function shortAddr(a) {
@@ -55,7 +28,7 @@ export default function Admin() {
   const { address, isConnected } = useAccount();
   const { writeContract, isPending } = useWriteContract();
 
-  // --------- Admin gate ----------
+  // ---- Vérifier si admin (owner de IdentityRegistry) ----
   const { data: ownerAddress } = useReadContract({
     address: CONTRACTS.identityRegistry,
     abi: IdentityABI,
@@ -69,7 +42,46 @@ export default function Admin() {
     address.toLowerCase() === ownerAddress.toLowerCase();
 
   // =========================================================================
-  // 1) KYC - Recherche manuelle
+  // HELPERS ACTIONS
+  // =========================================================================
+  async function approveKyc(wallet) {
+    await writeContract({
+      address: CONTRACTS.kycRequestRegistry,
+      abi: KYCABI,
+      functionName: "approveKYC",
+      args: [wallet],
+    });
+  }
+
+  async function rejectKyc(wallet) {
+    await writeContract({
+      address: CONTRACTS.kycRequestRegistry,
+      abi: KYCABI,
+      functionName: "rejectKYC",
+      args: [wallet],
+    });
+  }
+
+  async function verifyInvestor(wallet) {
+    await writeContract({
+      address: CONTRACTS.identityRegistry,
+      abi: IdentityABI,
+      functionName: "verifyInvestor",
+      args: [wallet],
+    });
+  }
+
+  async function revokeInvestor(wallet) {
+    await writeContract({
+      address: CONTRACTS.identityRegistry,
+      abi: IdentityABI,
+      functionName: "revokeInvestor",
+      args: [wallet],
+    });
+  }
+
+  // =========================================================================
+  // 1) KYC (recherche manuelle)
   // =========================================================================
   const [kycWallet, setKycWallet] = useState("");
 
@@ -89,105 +101,35 @@ export default function Admin() {
     query: { enabled: isValidAddress(kycWallet) },
   });
 
-  let exists = false;
-  let approved = false;
-  let rejected = false;
-  let kycHash = null;
+  const kycManual = useMemo(() => {
+    let exists = false;
+    let approved = false;
+    let rejected = false;
+    let kycHash = null;
 
-  if (Array.isArray(kycRequest) && kycRequest.length >= 4) {
-    kycHash = kycRequest[0];
-    exists = kycRequest[1];
-    approved = kycRequest[2];
-    rejected = kycRequest[3];
-  }
-
-  // états -> boutons
-  const canApprove = exists && !approved && !rejected;
-  const canReject = exists && !rejected; // peut servir même si approved (selon ton contrat)
-  const canRevokeInvest = Boolean(isVerified);
-
-  async function approveAndWhitelist(wallet) {
-    await writeContract({
-      address: CONTRACTS.kycRequestRegistry,
-      abi: KYCABI,
-      functionName: "approveKYC",
-      args: [wallet],
-    });
-    await writeContract({
-      address: CONTRACTS.identityRegistry,
-      abi: IdentityABI,
-      functionName: "verifyInvestor",
-      args: [wallet],
-    });
-  }
-
-  async function rejectAndRevoke(wallet) {
-    await writeContract({
-      address: CONTRACTS.kycRequestRegistry,
-      abi: KYCABI,
-      functionName: "rejectKYC",
-      args: [wallet],
-    });
-    await writeContract({
-      address: CONTRACTS.identityRegistry,
-      abi: IdentityABI,
-      functionName: "revokeInvestor",
-      args: [wallet],
-    });
-  }
-
-  async function revokeWhitelist(wallet) {
-    await writeContract({
-      address: CONTRACTS.identityRegistry,
-      abi: IdentityABI,
-      functionName: "revokeInvestor",
-      args: [wallet],
-    });
-  }
-
-  async function handleApproveKYC(e) {
-    e.preventDefault();
-    if (!isValidAddress(kycWallet)) return alert("Adresse invalide.");
-    if (!exists) return alert("Aucune demande KYC pour ce wallet.");
-
-    try {
-      await approveAndWhitelist(kycWallet);
-      alert("KYC approuvé & wallet whiteliste.");
-    } catch (err) {
-      console.error(err);
-      alert(err?.shortMessage || err?.message || "Erreur approbation KYC");
+    if (Array.isArray(kycRequest) && kycRequest.length >= 4) {
+      kycHash = kycRequest[0];
+      exists = kycRequest[1];
+      approved = kycRequest[2];
+      rejected = kycRequest[3];
     }
-  }
 
-  async function handleRejectKYC(e) {
-    e.preventDefault();
-    if (!isValidAddress(kycWallet)) return alert("Adresse invalide.");
-    if (!exists) return alert("Aucune demande KYC pour ce wallet.");
+    return {
+      exists,
+      approved,
+      rejected,
+      kycHash,
+      isVerified: Boolean(isVerified),
+    };
+  }, [kycRequest, isVerified]);
 
-    try {
-      await rejectAndRevoke(kycWallet);
-      alert("KYC rejeté & whitelist révoquée.");
-    } catch (err) {
-      console.error(err);
-      alert(err?.shortMessage || err?.message || "Erreur rejet KYC");
-    }
-  }
-
-  async function handleRevokeInvestor(e) {
-    e.preventDefault();
-    if (!isValidAddress(kycWallet)) return alert("Adresse invalide.");
-
-    try {
-      await revokeWhitelist(kycWallet);
-      alert("Droit d'investir révoqué.");
-    } catch (err) {
-      console.error(err);
-      alert(err?.shortMessage || err?.message || "Erreur revokeInvestor");
-    }
-  }
+  const canApproveManual = kycManual.exists && !kycManual.approved && !kycManual.rejected;
+  const canRejectManual = kycManual.exists && !kycManual.rejected;
+  const canRevokeManual = kycManual.isVerified; // freeze
+  const canReWhitelistManual = kycManual.approved && !kycManual.isVerified; // approved but frozen
 
   // =========================================================================
-  // 1bis) KYC - Liste (localStorage + statut on-chain)
+  // 1 bis) LISTE KYC (localStorage + statut on-chain)
   // =========================================================================
   const [reloadFlag, setReloadFlag] = useState(0);
 
@@ -254,7 +196,6 @@ export default function Admin() {
             approved: false,
             rejected: false,
             isVerified: false,
-            kycHash: null,
           });
         }
       }
@@ -265,15 +206,13 @@ export default function Admin() {
     loadStatuses();
   }, [kycForms, reloadFlag]);
 
-  const pendingList = useMemo(
-    () => kycList.filter((i) => i.exists && !i.approved && !i.rejected),
-    [kycList]
-  );
-  const approvedList = useMemo(() => kycList.filter((i) => i.approved), [kycList]);
-  const rejectedList = useMemo(() => kycList.filter((i) => i.rejected), [kycList]);
+  const pendingList = kycList.filter((i) => i.exists && !i.approved && !i.rejected);
+  const approvedWhitelistedList = kycList.filter((i) => i.approved && i.isVerified);
+  const approvedFrozenList = kycList.filter((i) => i.approved && !i.isVerified);
+  const rejectedList = kycList.filter((i) => i.rejected);
 
   // =========================================================================
-  // 2) BIENS
+  // 2) BIENS (meta front + tokens on-chain)
   // =========================================================================
   const [propertyMeta, setPropertyMeta] = useState(() => {
     try {
@@ -293,20 +232,20 @@ export default function Admin() {
     return (
       propertyMeta[key] || {
         token: tokenAddr,
-        published: false,
-        price: "",
-        spvName: "",
-        spvRegistration: "",
-        spvContractNumber: "",
         addressLine: "",
         city: "",
         country: "",
+        price: "",
         rooms: "",
         sqm: "",
         yield: "",
         description: "",
         imageDataUrl: null,
+        published: false,
         projectOwner: "",
+        spvName: "",
+        spvRegistration: "",
+        spvContractNumber: "",
       }
     );
   }
@@ -315,156 +254,13 @@ export default function Admin() {
     const key = tokenAddr.toLowerCase();
     const current = getMeta(tokenAddr);
 
-    if (current.published && field !== "published") {
-      alert("Dépublie ce bien pour modifier ses infos.");
-      return;
-    }
-
+    // ✅ IMPORTANT : on ne bloque plus l’édition (tu avais ce blocage)
+    // Tu pourras re-bloquer uniquement si tu veux.
     const updated = { ...current, [field]: value };
     const next = { ...propertyMeta, [key]: updated };
     savePropertyMeta(next);
   }
 
-  function setPublished(tokenAddr, published) {
-    updatePropertyField(tokenAddr, "published", published);
-  }
-
-  const [newTokenForm, setNewTokenForm] = useState({
-    name: "",
-    symbol: "",
-    maxSupply: "",
-    projectOwner: "",
-    price: "",
-    addressLine: "",
-    city: "",
-    country: "",
-    rooms: "",
-    sqm: "",
-    yield: "",
-    description: "",
-    spvName: "",
-    spvRegistration: "",
-    spvContractNumber: "",
-  });
-
-  const [imageDataUrl, setImageDataUrl] = useState("");
-
-  function updateNewTokenField(e) {
-    setNewTokenForm((p) => ({ ...p, [e.target.name]: e.target.value }));
-  }
-
-  function handleNewImageChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const res = reader.result;
-      if (typeof res === "string") setImageDataUrl(res);
-    };
-    reader.readAsDataURL(file);
-  }
-
-  async function handleCreateToken(e) {
-    e.preventDefault();
-
-    const {
-      name,
-      symbol,
-      maxSupply,
-      projectOwner,
-      price,
-      addressLine,
-      city,
-      country,
-      rooms,
-      sqm,
-      yield: yieldPct,
-      description,
-      spvName,
-      spvRegistration,
-      spvContractNumber,
-    } = newTokenForm;
-
-    if (!name || !symbol || !maxSupply || !isValidAddress(projectOwner)) {
-      alert("Complète name, symbol, maxSupply et projectOwner (adresse valide).");
-      return;
-    }
-
-    try {
-      await writeContract({
-        address: CONTRACTS.tokenFactory,
-        abi: TokenFactoryABI,
-        functionName: "createHouseToken",
-        args: [name, symbol, BigInt(maxSupply), projectOwner],
-      });
-
-      const countAfter = await readContract(config, {
-        address: CONTRACTS.tokenFactory,
-        abi: TokenFactoryABI,
-        functionName: "getHouseTokenCount",
-      });
-
-      const lastIndex = Number(countAfter) - 1;
-      const tokenAddr = await readContract(config, {
-        address: CONTRACTS.tokenFactory,
-        abi: TokenFactoryABI,
-        functionName: "allHouseTokens",
-        args: [lastIndex],
-      });
-
-      const key = tokenAddr.toLowerCase();
-      const metaCopy = { ...propertyMeta };
-
-      metaCopy[key] = {
-        token: tokenAddr,
-        published: true,
-        projectOwner,
-        price,
-        addressLine,
-        city,
-        country,
-        rooms,
-        sqm,
-        yield: yieldPct,
-        description,
-        imageDataUrl: imageDataUrl || null,
-        spvName,
-        spvRegistration,
-        spvContractNumber,
-        name,
-        symbol,
-      };
-
-      savePropertyMeta(metaCopy);
-
-      alert("Token créé + infos bien enregistrées (publié).");
-      setNewTokenForm({
-        name: "",
-        symbol: "",
-        maxSupply: "",
-        projectOwner: "",
-        price: "",
-        addressLine: "",
-        city: "",
-        country: "",
-        rooms: "",
-        sqm: "",
-        yield: "",
-        description: "",
-        spvName: "",
-        spvRegistration: "",
-        spvContractNumber: "",
-      });
-      setImageDataUrl("");
-      setReloadFlag((x) => x + 1);
-    } catch (err) {
-      console.error(err);
-      alert(err?.shortMessage || err?.message || "Erreur createHouseToken");
-    }
-  }
-
-  // tokens on-chain
   const [tokens, setTokens] = useState([]);
   const [loadingTokens, setLoadingTokens] = useState(false);
 
@@ -511,7 +307,7 @@ export default function Admin() {
 
         setTokens(list);
       } catch (err) {
-        console.error(err);
+        console.error("Erreur loadTokens:", err);
       } finally {
         setLoadingTokens(false);
       }
@@ -520,52 +316,23 @@ export default function Admin() {
     loadTokens();
   }, [reloadFlag]);
 
-  // burn
-  const [burnInputs, setBurnInputs] = useState({});
-  function updateBurnInput(tokenAddr, field, value) {
-    setBurnInputs((prev) => ({
-      ...prev,
-      [tokenAddr]: { ...(prev[tokenAddr] || {}), [field]: value },
-    }));
-  }
+  const [saleInputs, setSaleInputs] = useState({}); // tokenAddr -> saleAddr
+  const [editSaleMode, setEditSaleMode] = useState({}); // tokenAddr -> bool
 
-  async function handleBurnToken(tokenAddr) {
-    const input = burnInputs[tokenAddr] || {};
-    const from = input.from;
-    const amountStr = input.amount;
-
-    if (!isValidAddress(from)) return alert("Adresse 'from' invalide.");
-    if (!amountStr || Number(amountStr) <= 0) return alert("Montant invalide.");
-
-    try {
-      await writeContract({
-        address: tokenAddr,
-        abi: HouseTokenABI,
-        functionName: "burn",
-        args: [from, BigInt(amountStr)],
-      });
-      alert("Tokens burnés.");
-      setReloadFlag((x) => x + 1);
-    } catch (err) {
-      console.error(err);
-      alert(err?.shortMessage || err?.message || "Erreur burn()");
-    }
-  }
-
-  // set sale contract
-  const [saleInputs, setSaleInputs] = useState({});
-  const [editSaleMode, setEditSaleMode] = useState({});
-
-  function updateSaleInput(tokenAddr, value) {
-    setSaleInputs((prev) => ({ ...prev, [tokenAddr]: value }));
-  }
   function toggleEditSale(tokenAddr) {
     setEditSaleMode((prev) => ({ ...prev, [tokenAddr]: !prev[tokenAddr] }));
   }
 
+  function updateSaleInput(tokenAddr, value) {
+    setSaleInputs((prev) => ({ ...prev, [tokenAddr]: value }));
+  }
+
   async function handleSetSaleContract(tokenAddr) {
     const saleAddr = saleInputs[tokenAddr];
-    if (!isValidAddress(saleAddr)) return alert("Adresse HouseEthSale invalide.");
+    if (!isValidAddress(saleAddr)) {
+      alert("Adresse HouseEthSale invalide.");
+      return;
+    }
 
     try {
       await writeContract({
@@ -577,7 +344,7 @@ export default function Admin() {
 
       alert("Contrat de vente lié au token.");
       setReloadFlag((x) => x + 1);
-      setEditSaleMode((p) => ({ ...p, [tokenAddr]: false }));
+      setEditSaleMode((prev) => ({ ...prev, [tokenAddr]: false }));
     } catch (err) {
       console.error(err);
       alert(err?.shortMessage || err?.message || "Erreur setSaleContract");
@@ -585,15 +352,13 @@ export default function Admin() {
   }
 
   // =========================================================================
-  // RENDER
+  // RENDER GUARDS
   // =========================================================================
   if (!isConnected) {
     return (
       <div className="container">
-        <Card
-          title="Espace admin"
-          subtitle="Connecte-toi avec le wallet admin (platformOwner) pour voir cet espace."
-        />
+        <h1>Admin</h1>
+        <p>Connecte-toi avec le wallet admin (platformOwner) pour accéder à l’espace.</p>
       </div>
     );
   }
@@ -601,637 +366,563 @@ export default function Admin() {
   if (!isAdmin) {
     return (
       <div className="container">
-        <Card title="Espace admin">
-          <p>Tu n&apos;es pas autorisé à accéder à l&apos;administration.</p>
-          <p>
-            Wallet connecté : <code>{address}</code>
-          </p>
-          <p>
-            Owner attendu : <code>{ownerAddress?.toString()}</code>
-          </p>
-        </Card>
+        <h1>Admin</h1>
+        <p>Tu n&apos;es pas autorisé à accéder à l&apos;administration.</p>
+        <p>Wallet connecté : <code>{address}</code></p>
+        <p>Owner attendu : <code>{ownerAddress?.toString()}</code></p>
       </div>
     );
   }
 
+  // =========================================================================
+  // UI
+  // =========================================================================
   return (
-    <div className="container" style={{ display: "grid", gap: "1.25rem" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-        <h1 style={{ margin: 0 }}>Admin</h1>
-        <Badge tone="admin">Owner</Badge>
-        <span style={{ color: "rgba(15,18,23,0.62)" }}>
-          connecté : <code>{shortAddr(address)}</code>
-        </span>
+    <div className="container" style={{ display: "grid", gap: 24 }}>
+      <div className="pagehead">
+        <h1 style={{ margin: 0 }}>Back-office</h1>
+        <p className="muted" style={{ margin: 0 }}>Connecté en admin : <code>{shortAddr(address)}</code></p>
       </div>
 
-      {/* ===================== SECTION KYC ===================== */}
-      <Card
-        title="1) Compliance & KYC"
-        subtitle="Gère les demandes KYC (statut on-chain) et la whitelist (IdentityRegistry)."
-      >
-        <div style={{ display: "grid", gap: "1rem" }}>
-          {/* Recherche */}
-          <div className="card" style={{ padding: "0.9rem" }}>
-            <h3 style={{ marginTop: 0 }}>Recherche par wallet</h3>
-            <Row>
-              <div>
-                <label>Adresse investisseur</label>
-                <input
-                  style={{ width: "100%", marginTop: 6 }}
-                  value={kycWallet}
-                  onChange={(e) => setKycWallet(e.target.value)}
-                  placeholder="0x..."
-                />
-              </div>
-
-              {isValidAddress(kycWallet) && (
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                  <Badge tone={exists ? "ok" : "danger"}>Request: {exists ? "oui" : "non"}</Badge>
-                  <Badge tone={approved ? "ok" : "neutral"}>Approved: {String(approved)}</Badge>
-                  <Badge tone={rejected ? "danger" : "neutral"}>Rejected: {String(rejected)}</Badge>
-                  <Badge tone={isVerified ? "ok" : "warn"}>
-                    Whitelist: {isVerified ? "oui" : "non"}
-                  </Badge>
-                  {kycHash && kycHash !== "0x0000000000000000000000000000000000000000000000000000000000000000" && (
-                    <Badge>Hash: {String(kycHash).slice(0, 10)}…</Badge>
-                  )}
-                </div>
-              )}
-
-              <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
-                <button
-                  className="btn"
-                  onClick={handleApproveKYC}
-                  disabled={isPending || !canApprove}
-                  title={!canApprove ? "KYC non en attente ou déjà traité" : ""}
-                  type="button"
-                >
-                  ✅ Approuver + Whitelist
-                </button>
-
-                <button
-                  className="btn btn--ghost"
-                  onClick={handleRejectKYC}
-                  disabled={isPending || !canReject}
-                  title={!canReject ? "KYC inexistant ou déjà rejeté" : ""}
-                  type="button"
-                >
-                  ❌ Rejeter + Révoquer whitelist
-                </button>
-
-                <button
-                  className="btn btn--ghost"
-                  onClick={handleRevokeInvestor}
-                  disabled={isPending || !canRevokeInvest}
-                  title={!canRevokeInvest ? "Wallet pas whiteliste actuellement" : ""}
-                  type="button"
-                >
-                  🧊 Révoquer seulement le droit d&apos;investir
-                </button>
-
-                <button
-                  className="btn btn--ghost"
-                  type="button"
-                  onClick={() => setReloadFlag((x) => x + 1)}
-                >
-                  ↻ Rafraîchir
-                </button>
-              </div>
-            </Row>
-          </div>
-
-          {/* Listes */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: "1rem",
-            }}
-          >
-            {/* Pending */}
-            <div className="card" style={{ padding: "0.9rem" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <h3 style={{ margin: 0 }}>En attente</h3>
-                <Badge tone="warn">{pendingList.length}</Badge>
-              </div>
-
-              {pendingList.length === 0 && <p style={{ color: "rgba(15,18,23,0.62)" }}>Aucune demande.</p>}
-
-              {pendingList.map((item) => (
-                <div
-                  key={item.wallet}
-                  style={{
-                    border: "1px solid rgba(0,0,0,0.08)",
-                    borderRadius: 14,
-                    padding: "0.7rem",
-                    marginTop: "0.7rem",
-                    background: "rgba(255,255,255,0.6)",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{item.form?.lastname} {item.form?.firstname}</div>
-                      <div style={{ color: "rgba(15,18,23,0.62)", fontSize: "0.9rem" }}>
-                        <code>{shortAddr(item.wallet)}</code>
-                      </div>
-                    </div>
-                    <Badge tone="warn">Pending</Badge>
-                  </div>
-
-                  <div style={{ marginTop: 8, fontSize: "0.92rem" }}>
-                    <div><strong>Adresse :</strong> {item.form?.street}, {item.form?.city}, {item.form?.country}</div>
-                    <div><strong>Nationalité :</strong> {item.form?.nationality || "—"}</div>
-                    <div><strong>Résidence fiscale :</strong> {item.form?.taxCountry || "—"}</div>
-                  </div>
-
-                  {item.kycHash && (
-                    <div style={{ marginTop: 8, fontSize: "0.9rem" }}>
-                      <strong>Hash :</strong> <code>{String(item.kycHash)}</code>
-                    </div>
-                  )}
-
-                  <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-                    <button
-                      className="btn"
-                      type="button"
-                      disabled={isPending}
-                      onClick={async () => {
-                        try {
-                          if (item.form?.taxCountry && item.form.taxCountry !== "FR") {
-                            alert("Compliance: résidence fiscale ≠ FR. Refuse ou ne l'approuve pas.");
-                            return;
-                          }
-                          await approveAndWhitelist(item.wallet);
-                          alert("KYC approuvé & wallet whiteliste.");
-                          setReloadFlag((x) => x + 1);
-                        } catch (err) {
-                          console.error(err);
-                          alert(err?.shortMessage || err?.message || "Erreur approbation");
-                        }
-                      }}
-                    >
-                      ✅ Approuver
-                    </button>
-
-                    <button
-                      className="btn btn--ghost"
-                      type="button"
-                      disabled={isPending}
-                      onClick={async () => {
-                        try {
-                          await rejectAndRevoke(item.wallet);
-                          alert("KYC rejeté & whitelist révoquée.");
-                          setReloadFlag((x) => x + 1);
-                        } catch (err) {
-                          console.error(err);
-                          alert(err?.shortMessage || err?.message || "Erreur rejet");
-                        }
-                      }}
-                    >
-                      ❌ Refuser
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Approved */}
-            <div className="card" style={{ padding: "0.9rem" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <h3 style={{ margin: 0 }}>Approuvés</h3>
-                <Badge tone="ok">{approvedList.length}</Badge>
-              </div>
-
-              {approvedList.length === 0 && <p style={{ color: "rgba(15,18,23,0.62)" }}>Aucun.</p>}
-
-              {approvedList.map((item) => (
-                <div
-                  key={item.wallet}
-                  style={{
-                    border: "1px solid rgba(0,0,0,0.08)",
-                    borderRadius: 14,
-                    padding: "0.7rem",
-                    marginTop: "0.7rem",
-                    background: "rgba(255,255,255,0.6)",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{item.form?.lastname} {item.form?.firstname}</div>
-                      <div style={{ color: "rgba(15,18,23,0.62)", fontSize: "0.9rem" }}>
-                        <code>{shortAddr(item.wallet)}</code>
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                      <Badge tone="ok">Approved</Badge>
-                      <Badge tone={item.isVerified ? "ok" : "warn"}>
-                        Whitelist {item.isVerified ? "ON" : "OFF"}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button
-                      className="btn btn--ghost"
-                      type="button"
-                      disabled={isPending || !item.isVerified}
-                      title={!item.isVerified ? "Déjà révoqué" : ""}
-                      onClick={async () => {
-                        try {
-                          await revokeWhitelist(item.wallet);
-                          alert("Whitelist révoquée.");
-                          setReloadFlag((x) => x + 1);
-                        } catch (err) {
-                          console.error(err);
-                          alert(err?.shortMessage || err?.message || "Erreur revoke");
-                        }
-                      }}
-                    >
-                      🧊 Révoquer droit d&apos;investir
-                    </button>
-
-                    <button
-                      className="btn btn--ghost"
-                      type="button"
-                      disabled={isPending}
-                      onClick={async () => {
-                        try {
-                          await rejectAndRevoke(item.wallet);
-                          alert("KYC rejeté & whitelist révoquée.");
-                          setReloadFlag((x) => x + 1);
-                        } catch (err) {
-                          console.error(err);
-                          alert(err?.shortMessage || err?.message || "Erreur rejet");
-                        }
-                      }}
-                      title="Selon ton contrat, cette action peut être interdite après approbation."
-                    >
-                      ❌ Rejeter (si autorisé)
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Rejected */}
-            <div className="card" style={{ padding: "0.9rem" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <h3 style={{ margin: 0 }}>Rejetés</h3>
-                <Badge tone="danger">{rejectedList.length}</Badge>
-              </div>
-
-              {rejectedList.length === 0 && <p style={{ color: "rgba(15,18,23,0.62)" }}>Aucun.</p>}
-
-              {rejectedList.map((item) => (
-                <div
-                  key={item.wallet}
-                  style={{
-                    border: "1px solid rgba(0,0,0,0.08)",
-                    borderRadius: 14,
-                    padding: "0.7rem",
-                    marginTop: "0.7rem",
-                    background: "rgba(255,255,255,0.6)",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{item.form?.lastname} {item.form?.firstname}</div>
-                      <div style={{ color: "rgba(15,18,23,0.62)", fontSize: "0.9rem" }}>
-                        <code>{shortAddr(item.wallet)}</code>
-                      </div>
-                    </div>
-                    <Badge tone="danger">Rejected</Badge>
-                  </div>
-
-                  <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button
-                      className="btn"
-                      type="button"
-                      disabled={isPending}
-                      onClick={async () => {
-                        try {
-                          if (item.form?.taxCountry && item.form.taxCountry !== "FR") {
-                            alert("Compliance: résidence fiscale ≠ FR. Corrige son formulaire avant approbation.");
-                            return;
-                          }
-                          await approveAndWhitelist(item.wallet);
-                          alert("KYC ré-approuvé & wallet whiteliste.");
-                          setReloadFlag((x) => x + 1);
-                        } catch (err) {
-                          console.error(err);
-                          alert(err?.shortMessage || err?.message || "Erreur ré-approbation");
-                        }
-                      }}
-                    >
-                      ✅ Ré-approuver
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+      {/* ========================== SECTION KYC ========================== */}
+      <section className="section">
+        <div className="section__head">
+          <h2 style={{ margin: 0 }}>KYC & Whitelist</h2>
+          <p className="muted" style={{ margin: 0 }}>
+            Approver = valide la demande KYC · Whitelist = autorise l’achat · Révoquer = gel
+          </p>
         </div>
-      </Card>
 
-      {/* ===================== SECTION BIENS ===================== */}
-      <Card
-        title="2) Biens & Tokens"
-        subtitle="Créer un bien, gérer les infos front, lier le HouseEthSale, et suivre la tokenisation."
-      >
-        {/* Création */}
-        <div className="card" style={{ padding: "0.9rem" }}>
-          <h3 style={{ marginTop: 0 }}>Créer un nouveau bien</h3>
+        <div className="grid2">
+          {/* --- Recherche wallet --- */}
+          <div className="card">
+            <div className="card__body">
+              <h3 style={{ marginTop: 0 }}>Recherche par wallet</h3>
 
-          <form
-            onSubmit={handleCreateToken}
-            style={{
-              display: "grid",
-              gap: "0.7rem",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-              alignItems: "start",
-            }}
-          >
-            <div style={{ gridColumn: "1 / -1" }}>
-              <Badge>On-chain</Badge>
-            </div>
-
-            <div>
-              <label>Nom du bien</label>
-              <input name="name" value={newTokenForm.name} onChange={updateNewTokenField} />
-            </div>
-
-            <div>
-              <label>Symbole (ticker)</label>
-              <input name="symbol" value={newTokenForm.symbol} onChange={updateNewTokenField} />
-            </div>
-
-            <div>
-              <label>Max supply</label>
+              <label className="label">Adresse investisseur</label>
               <input
-                name="maxSupply"
-                type="number"
-                value={newTokenForm.maxSupply}
-                onChange={updateNewTokenField}
-              />
-            </div>
-
-            <div>
-              <label>ProjectOwner (wallet SPV)</label>
-              <input
-                name="projectOwner"
-                value={newTokenForm.projectOwner}
-                onChange={updateNewTokenField}
+                className="input"
+                value={kycWallet}
+                onChange={(e) => setKycWallet(e.target.value)}
                 placeholder="0x..."
               />
-            </div>
 
-            <div style={{ gridColumn: "1 / -1", marginTop: 6 }}>
-              <Badge>SPV (front)</Badge>
-            </div>
-
-            <div>
-              <label>Nom légal SPV</label>
-              <input name="spvName" value={newTokenForm.spvName} onChange={updateNewTokenField} />
-            </div>
-
-            <div>
-              <label>Immatriculation</label>
-              <input
-                name="spvRegistration"
-                value={newTokenForm.spvRegistration}
-                onChange={updateNewTokenField}
-                placeholder="RCS ..."
-              />
-            </div>
-
-            <div style={{ gridColumn: "1 / -1" }}>
-              <label>Numéro de contrat / dossier</label>
-              <input
-                name="spvContractNumber"
-                value={newTokenForm.spvContractNumber}
-                onChange={updateNewTokenField}
-                placeholder="ABC-2025-001"
-              />
-            </div>
-
-            <div style={{ gridColumn: "1 / -1", marginTop: 6 }}>
-              <Badge>Bien (front)</Badge>
-            </div>
-
-            <div>
-              <label>Prix du bien (€)</label>
-              <input name="price" type="number" value={newTokenForm.price} onChange={updateNewTokenField} />
-            </div>
-
-            <div>
-              <label>Adresse du bien</label>
-              <input
-                name="addressLine"
-                value={newTokenForm.addressLine}
-                onChange={updateNewTokenField}
-                placeholder="..."
-              />
-            </div>
-
-            <div>
-              <label>Ville</label>
-              <input name="city" value={newTokenForm.city} onChange={updateNewTokenField} />
-            </div>
-
-            <div>
-              <label>Pays</label>
-              <input name="country" value={newTokenForm.country} onChange={updateNewTokenField} />
-            </div>
-
-            <div>
-              <label>Image (upload)</label>
-              <input type="file" accept="image/*" onChange={handleNewImageChange} />
-              {imageDataUrl && (
-                <img
-                  src={imageDataUrl}
-                  alt="preview"
-                  style={{ marginTop: 8, width: 180, borderRadius: 14, border: "1px solid rgba(0,0,0,0.08)" }}
-                />
-              )}
-            </div>
-
-            <div style={{ gridColumn: "1 / -1" }}>
-              <label>Description</label>
-              <textarea
-                name="description"
-                rows={3}
-                value={newTokenForm.description}
-                onChange={updateNewTokenField}
-              />
-            </div>
-
-            <div style={{ gridColumn: "1 / -1", display: "flex", gap: 10 }}>
-              <button className="btn" type="submit" disabled={isPending}>
-                {isPending ? "Transaction..." : "Créer le token + publier"}
-              </button>
-              <button
-                className="btn btn--ghost"
-                type="button"
-                onClick={() => setReloadFlag((x) => x + 1)}
-              >
-                ↻ Rafraîchir la liste
-              </button>
-            </div>
-          </form>
-        </div>
-
-        {/* Liste */}
-        <div style={{ marginTop: "1rem" }}>
-          <h3 style={{ margin: "0 0 0.6rem 0" }}>Tokens existants</h3>
-          {loadingTokens && <p>Chargement…</p>}
-          {!loadingTokens && tokens.length === 0 && <p>Aucun token.</p>}
-
-          <div style={{ display: "grid", gap: "0.9rem" }}>
-            {tokens.map((t) => {
-              const ts = t.totalSupply ?? 0n;
-              const ms = t.maxSupply ?? 0n;
-              const progress = ms > 0n ? Number((ts * 100n) / ms) : 0;
-
-              const meta = getMeta(t.address);
-              const isLinked = t.saleContract && t.saleContract !== ZERO_ADDR;
-
-              // conversion € -> % / token
-              const maxSupplyNum = Number(ms);
-              let pricePerTokenEUR = null;
-              let percentPerToken = null;
-              if (meta.price && maxSupplyNum > 0) {
-                const p = Number(meta.price);
-                pricePerTokenEUR = p / maxSupplyNum;
-                percentPerToken = 100 / maxSupplyNum;
-              }
-
-              const burn = burnInputs[t.address] || {};
-              const isPublished = !!meta.published;
-              const metaDisabled = isPublished;
-
-              return (
-                <div key={t.address} className="card" style={{ padding: "1rem" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                    <div>
-                      <div style={{ fontSize: "1.15rem", fontWeight: 800 }}>
-                        {t.name} <span style={{ color: "rgba(15,18,23,0.55)" }}>({t.symbol})</span>
-                      </div>
-                      <div style={{ color: "rgba(15,18,23,0.62)" }}>
-                        <code>{t.address}</code>
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                      <Badge tone={isPublished ? "ok" : "warn"}>{isPublished ? "Publié" : "Non publié"}</Badge>
-                      <Badge tone={isLinked ? "ok" : "warn"}>{isLinked ? "Sale liée" : "Sale manquante"}</Badge>
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                      <div>
-                        <strong>Supply :</strong> {String(ts)} / {String(ms)} ({progress}%)
-                      </div>
-                      {pricePerTokenEUR !== null && percentPerToken !== null && (
-                        <div>
-                          <strong>1 token</strong> = {pricePerTokenEUR.toFixed(2)} € ≈{" "}
-                          {percentPerToken.toFixed(4)} % du bien
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {!isPublished ? (
-                        <button className="btn" type="button" onClick={() => setPublished(t.address, true)}>
-                          Publier
-                        </button>
-                      ) : (
-                        <button className="btn btn--ghost" type="button" onClick={() => setPublished(t.address, false)}>
-                          Dépublier (pour modifier)
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Sale link */}
-                    <div style={{ marginTop: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-                        <h4 style={{ margin: 0 }}>Contrat HouseEthSale</h4>
-                        <div style={{ color: "rgba(15,18,23,0.62)" }}>
-                          Actuel : <code>{isLinked ? t.saleContract : "Aucun"}</code>
-                        </div>
-                      </div>
-
-                      {!isLinked && (
-                        <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                          <label>Adresse HouseEthSale</label>
-                          <input
-                            value={saleInputs[t.address] || ""}
-                            onChange={(e) => updateSaleInput(t.address, e.target.value)}
-                            placeholder="0x..."
-                          />
-                          <button className="btn" type="button" onClick={() => handleSetSaleContract(t.address)}>
-                            Lier au token
-                          </button>
-                        </div>
-                      )}
-
-                      {isLinked && (
-                        <div style={{ marginTop: 10 }}>
-                          <button className="btn btn--ghost" type="button" onClick={() => toggleEditSale(t.address)}>
-                            {editSaleMode[t.address] ? "Annuler" : "Modifier l'adresse"}
-                          </button>
-
-                          {editSaleMode[t.address] && (
-                            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                              <label>Nouvelle adresse HouseEthSale</label>
-                              <input
-                                value={saleInputs[t.address] || ""}
-                                onChange={(e) => updateSaleInput(t.address, e.target.value)}
-                                placeholder="0x..."
-                              />
-                              <button className="btn" type="button" onClick={() => handleSetSaleContract(t.address)}>
-                                Enregistrer
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Burn */}
-                    <div style={{ marginTop: 10 }}>
-                      <h4 style={{ margin: "0 0 0.5rem 0" }}>Burn</h4>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                        <input
-                          placeholder="Adresse from"
-                          value={burn.from || ""}
-                          onChange={(e) => updateBurnInput(t.address, "from", e.target.value)}
-                        />
-                        <input
-                          placeholder="Quantité"
-                          type="number"
-                          value={burn.amount || ""}
-                          onChange={(e) => updateBurnInput(t.address, "amount", e.target.value)}
-                        />
-                      </div>
-                      <button className="btn btn--ghost" type="button" style={{ marginTop: 8 }} onClick={() => handleBurnToken(t.address)}>
-                        🔥 Burn tokens
-                      </button>
-                    </div>
-
-                    {/* Meta editing notice */}
-                    {metaDisabled && (
-                      <p style={{ color: "rgba(15,18,23,0.62)", marginTop: 6 }}>
-                        ℹ️ Bien publié : dépublie pour modifier les infos front (SPV, prix, description…).
-                      </p>
-                    )}
-                  </div>
+              {isValidAddress(kycWallet) && (
+                <div style={{ marginTop: 12 }} className="muted">
+                  <div>exists: {String(kycManual.exists)}</div>
+                  <div>approved: {String(kycManual.approved)}</div>
+                  <div>rejected: {String(kycManual.rejected)}</div>
+                  <div>isVerified: {String(kycManual.isVerified)}</div>
+                  {kycManual.kycHash && (
+                    <div>kycHash: <code>{kycManual.kycHash}</code></div>
+                  )}
                 </div>
-              );
-            })}
+              )}
+
+              <div className="flex" style={{ gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+                <button
+                  className="btn"
+                  disabled={isPending || !canApproveManual}
+                  onClick={async () => {
+                    try {
+                      await approveKyc(kycWallet);
+                      await verifyInvestor(kycWallet);
+                      alert("KYC approuvé + whitelist ON.");
+                      setReloadFlag((x) => x + 1);
+                    } catch (e) {
+                      alert(e?.shortMessage || e?.message || "Erreur approve");
+                    }
+                  }}
+                >
+                  ✅ Approver + Whitelist
+                </button>
+
+                <button
+                  className="btn btn--ghost"
+                  disabled={isPending || !canRevokeManual}
+                  onClick={async () => {
+                    try {
+                      await revokeInvestor(kycWallet);
+                      alert("Whitelist révoquée (gel).");
+                      setReloadFlag((x) => x + 1);
+                    } catch (e) {
+                      alert(e?.shortMessage || e?.message || "Erreur revoke");
+                    }
+                  }}
+                >
+                  🧊 Révoquer (geler)
+                </button>
+
+                <button
+                  className="btn"
+                  disabled={isPending || !canReWhitelistManual}
+                  onClick={async () => {
+                    try {
+                      await verifyInvestor(kycWallet);
+                      alert("Wallet re-whiteliste.");
+                      setReloadFlag((x) => x + 1);
+                    } catch (e) {
+                      alert(e?.shortMessage || e?.message || "Erreur re-whitelist");
+                    }
+                  }}
+                >
+                  ✅ Re-whitelister
+                </button>
+
+                <button
+                  className="btn btn--ghost"
+                  disabled={isPending || !canRejectManual}
+                  onClick={async () => {
+                    try {
+                      await rejectKyc(kycWallet);
+                      await revokeInvestor(kycWallet);
+                      alert("Rejeté + whitelist off.");
+                      setReloadFlag((x) => x + 1);
+                    } catch (e) {
+                      alert(e?.shortMessage || e?.message || "Erreur reject");
+                    }
+                  }}
+                >
+                  ❌ Rejeter
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* --- Vue rapide compteurs --- */}
+          <div className="card">
+            <div className="card__body">
+              <h3 style={{ marginTop: 0 }}>Vue d’ensemble</h3>
+              <div className="stats">
+                <div className="stat">
+                  <div className="stat__label">En attente</div>
+                  <div className="stat__value">{pendingList.length}</div>
+                </div>
+                <div className="stat">
+                  <div className="stat__label">Approuvés</div>
+                  <div className="stat__value">{approvedWhitelistedList.length}</div>
+                </div>
+                <div className="stat">
+                  <div className="stat__label">Gelés</div>
+                  <div className="stat__value">{approvedFrozenList.length}</div>
+                </div>
+                <div className="stat">
+                  <div className="stat__label">Rejetés</div>
+                  <div className="stat__value">{rejectedList.length}</div>
+                </div>
+              </div>
+
+              <p className="muted" style={{ marginTop: 12 }}>
+                Remarque: la liste provient de <code>localStorage(kycForms)</code> + recoupement on-chain.
+              </p>
+            </div>
           </div>
         </div>
-      </Card>
+
+        {/* --- Listes --- */}
+        <div className="grid2" style={{ marginTop: 16 }}>
+          <KycListCard
+            title="En attente"
+            tone="warn"
+            items={pendingList}
+            isPending={isPending}
+            onApprove={async (wallet, form) => {
+              // compliance FR soft: tu peux durcir ici
+              if (form?.taxCountry && form.taxCountry !== "FR") {
+                alert("Compliance: résidence fiscale ≠ FR.");
+                return;
+              }
+              await approveKyc(wallet);
+              await verifyInvestor(wallet);
+            }}
+            onReject={async (wallet) => {
+              await rejectKyc(wallet);
+              await revokeInvestor(wallet);
+            }}
+            canApprove={(it) => it.exists && !it.approved && !it.rejected}
+            canReject={(it) => it.exists && !it.rejected}
+            showFreeze={false}
+            showReWhitelist={false}
+          />
+
+          <KycListCard
+            title="Approuvés (whitelist ON)"
+            tone="ok"
+            items={approvedWhitelistedList}
+            isPending={isPending}
+            onFreeze={async (wallet) => {
+              await revokeInvestor(wallet);
+            }}
+            onReject={async (wallet) => {
+              await rejectKyc(wallet);
+              await revokeInvestor(wallet);
+            }}
+            showApprove={false}
+            showFreeze
+            showReWhitelist={false}
+          />
+
+          <KycListCard
+            title="Gelés (KYC ok, achat interdit)"
+            tone="warn"
+            items={approvedFrozenList}
+            isPending={isPending}
+            onReWhitelist={async (wallet) => {
+              await verifyInvestor(wallet);
+            }}
+            onReject={async (wallet) => {
+              await rejectKyc(wallet);
+              await revokeInvestor(wallet);
+            }}
+            showApprove={false}
+            showFreeze={false}
+            showReWhitelist
+          />
+
+          <KycListCard
+            title="Rejetés"
+            tone="danger"
+            items={rejectedList}
+            isPending={isPending}
+            onReApprove={async (wallet, form) => {
+              if (form?.taxCountry && form.taxCountry !== "FR") {
+                alert("Compliance: résidence fiscale ≠ FR.");
+                return;
+              }
+              await approveKyc(wallet);
+              await verifyInvestor(wallet);
+            }}
+            showReject={false}
+            showFreeze={false}
+            showApprove={false}
+            showReWhitelist={false}
+            showReApprove
+          />
+        </div>
+      </section>
+
+      {/* ========================== SECTION BIENS ========================== */}
+      <section className="section">
+        <div className="section__head">
+          <h2 style={{ margin: 0 }}>Biens & Security tokens</h2>
+          <p className="muted" style={{ margin: 0 }}>
+            Ici tu modifies les infos du bien (front) & tu demande à ton dev de lier manuellement le contrat HouseEthSale au security token.
+          </p>
+        </div>
+
+        <div className="card">
+          <div className="card__body">
+            <h3 style={{ marginTop: 0 }}>Tokens existants</h3>
+            {loadingTokens && <p className="muted">Chargement…</p>}
+            {!loadingTokens && tokens.length === 0 && <p className="muted">Aucun token.</p>}
+
+            {!loadingTokens &&
+              tokens.map((t) => {
+                const meta = getMeta(t.address);
+                const ts = t.totalSupply ?? 0n;
+                const ms = t.maxSupply ?? 0n;
+                const maxSupplyNum = Number(ms || 0n);
+
+                const progress = ms > 0n ? Number((ts * 100n) / ms) : 0;
+
+                const isLinked =
+                  t.saleContract &&
+                  t.saleContract !== "0x0000000000000000000000000000000000000000";
+
+                let adminPricePerTokenEUR = null;
+                let adminPercentPerToken = null;
+                if (meta.price && maxSupplyNum > 0) {
+                  const price = Number(meta.price);
+                  adminPricePerTokenEUR = price / maxSupplyNum;
+                  adminPercentPerToken = 100 / maxSupplyNum;
+                }
+
+                return (
+                  <div key={t.address} className="item" style={{ marginTop: 14 }}>
+                    <div className="flex between">
+                      <div>
+                        <strong>{t.name}</strong> <span className="muted">(Security token • {t.symbol})</span>
+                        <div className="muted">
+                          Token: <code>{shortAddr(t.address)}</code>
+                        </div>
+                      </div>
+
+                      <div className="flex" style={{ gap: 8 }}>
+                        {isLinked ? <span className="badge badge--ok">Sale linked</span> : <span className="badge badge--warn">No sale</span>}
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 10 }}>
+                      <div className="muted" style={{ fontSize: 13 }}>
+                        Supply: {String(ts)} / {String(ms)} • {progress}%
+                      </div>
+                      <div className="progress"><div className="progress__bar" style={{ width: `${progress}%` }} /></div>
+
+                      {adminPricePerTokenEUR !== null && adminPercentPerToken !== null && (
+                        <p className="muted" style={{ marginTop: 8 }}>
+                          1 token = <strong>{adminPricePerTokenEUR.toFixed(2)} €</strong> ≈{" "}
+                          <strong>{adminPercentPerToken.toFixed(4)} %</strong> du bien
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Infos BIEN (editable) */}
+                    <div className="grid2" style={{ marginTop: 12 }}>
+                      <div>
+                        <label className="label">Adresse</label>
+                        <input className="input" value={meta.addressLine || ""} onChange={(e) => updatePropertyField(t.address, "addressLine", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="label">Ville</label>
+                        <input className="input" value={meta.city || ""} onChange={(e) => updatePropertyField(t.address, "city", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="label">Pays</label>
+                        <input className="input" value={meta.country || ""} onChange={(e) => updatePropertyField(t.address, "country", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="label">Prix du bien (€)</label>
+                        <input className="input" type="number" value={meta.price || ""} onChange={(e) => updatePropertyField(t.address, "price", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="label">m²</label>
+                        <input className="input" type="number" value={meta.sqm || ""} onChange={(e) => updatePropertyField(t.address, "sqm", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="label">Pièces</label>
+                        <input className="input" type="number" value={meta.rooms || ""} onChange={(e) => updatePropertyField(t.address, "rooms", e.target.value)} />
+                      </div>
+                    </div>
+
+                    {/* Infos SPV */}
+                    <div className="grid2" style={{ marginTop: 12 }}>
+                      <div>
+                        <label className="label">SPV (nom légal)</label>
+                        <input className="input" value={meta.spvName || ""} onChange={(e) => updatePropertyField(t.address, "spvName", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="label">Immatriculation</label>
+                        <input className="input" value={meta.spvRegistration || ""} onChange={(e) => updatePropertyField(t.address, "spvRegistration", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="label">Numéro de contrat</label>
+                        <input className="input" value={meta.spvContractNumber || ""} onChange={(e) => updatePropertyField(t.address, "spvContractNumber", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="label">Rendement cible (%)</label>
+                        <input className="input" type="number" step="0.1" value={meta.yield || ""} onChange={(e) => updatePropertyField(t.address, "yield", e.target.value)} />
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 12 }}>
+                      <label className="label">Description</label>
+                      <textarea className="textarea" rows={3} value={meta.description || ""} onChange={(e) => updatePropertyField(t.address, "description", e.target.value)} />
+                    </div>
+
+                    {/* Liaison Sale */}
+                    <div style={{ marginTop: 14 }} className="card card--soft">
+                      <div className="card__body">
+                        <div className="flex between">
+                          <strong>Contrat de vente (HouseEthSale)</strong>
+                          <code>{isLinked ? shortAddr(t.saleContract) : "Aucun"}</code>
+                        </div>
+
+                        {!isLinked && (
+                          <div style={{ marginTop: 10 }}>
+                            <label className="label">Adresse HouseEthSale</label>
+                            <input
+                              className="input"
+                              placeholder="0x..."
+                              value={saleInputs[t.address] || ""}
+                              onChange={(e) => updateSaleInput(t.address, e.target.value)}
+                            />
+                            <button className="btn" style={{ marginTop: 10 }} disabled={isPending} onClick={() => handleSetSaleContract(t.address)}>
+                              💾 Lier ce contrat de vente
+                            </button>
+                          </div>
+                        )}
+
+                        {isLinked && (
+                          <div style={{ marginTop: 10 }}>
+                            {!editSaleMode[t.address] ? (
+                              <button className="btn btn--ghost" type="button" onClick={() => toggleEditSale(t.address)}>
+                                ✏️ Modifier l’adresse HouseEthSale
+                              </button>
+                            ) : (
+                              <>
+                                <label className="label">Nouvelle adresse HouseEthSale</label>
+                                <input
+                                  className="input"
+                                  placeholder="0x..."
+                                  value={saleInputs[t.address] || ""}
+                                  onChange={(e) => updateSaleInput(t.address, e.target.value)}
+                                />
+                                <div className="flex" style={{ gap: 10, marginTop: 10 }}>
+                                  <button className="btn" disabled={isPending} onClick={() => handleSetSaleContract(t.address)}>
+                                    💾 Enregistrer
+                                  </button>
+                                  <button className="btn btn--ghost" type="button" onClick={() => toggleEditSale(t.address)}>
+                                    Annuler
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ============================ SUB COMPONENTS ============================ */
+
+function KycListCard({
+  title,
+  tone,
+  items,
+  isPending,
+  onApprove,
+  onReject,
+  onFreeze,
+  onReWhitelist,
+  onReApprove,
+  canApprove,
+  canReject,
+  showApprove = true,
+  showReject = true,
+  showFreeze = false,
+  showReWhitelist = false,
+  showReApprove = false,
+}) {
+  return (
+    <div className="card">
+      <div className="card__body">
+        <div className="flex between">
+          <h3 style={{ margin: 0 }}>{title}</h3>
+          <span className={`badge badge--${tone}`}>{items.length}</span>
+        </div>
+
+        {items.length === 0 && <p className="muted" style={{ marginTop: 10 }}>Aucun.</p>}
+
+        {items.map((item) => (
+          <div key={item.wallet} className="item" style={{ marginTop: 12 }}>
+            <div className="flex between">
+              <div>
+                <strong>{item.form?.lastname} {item.form?.firstname}</strong>
+                <div className="muted"><code>{shortAddr(item.wallet)}</code></div>
+              </div>
+              <span className={`badge badge--${tone}`}>
+                {item.rejected ? "Rejected" : item.approved ? (item.isVerified ? "Approved" : "Frozen") : "Pending"}
+              </span>
+            </div>
+
+            <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+              {item.form?.taxCountry && <>Fiscal: <strong>{item.form.taxCountry}</strong> · </>}
+              {item.form?.nationality && <>Nat: <strong>{item.form.nationality}</strong></>}
+            </div>
+
+            {item.kycHash && (
+              <div className="muted" style={{ marginTop: 6 }}>
+                Hash: <code>{item.kycHash}</code>
+              </div>
+            )}
+
+            <div className="flex" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+              {showApprove && (
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={isPending || (canApprove ? !canApprove(item) : false)}
+                  onClick={async () => {
+                    try {
+                      await onApprove?.(item.wallet, item.form);
+                    } catch (e) {
+                      alert(e?.shortMessage || e?.message || "Erreur approve");
+                    }
+                  }}
+                >
+                  ✅ Approuver
+                </button>
+              )}
+
+              {showReApprove && (
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={isPending}
+                  onClick={async () => {
+                    try {
+                      await onReApprove?.(item.wallet, item.form);
+                    } catch (e) {
+                      alert(e?.shortMessage || e?.message || "Erreur re-approve");
+                    }
+                  }}
+                >
+                  ✅ Ré-approuver
+                </button>
+              )}
+
+              {showReWhitelist && (
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={isPending}
+                  onClick={async () => {
+                    try {
+                      await onReWhitelist?.(item.wallet);
+                    } catch (e) {
+                      alert(e?.shortMessage || e?.message || "Erreur re-whitelist");
+                    }
+                  }}
+                >
+                  ✅ Re-whitelister
+                </button>
+              )}
+
+              {showFreeze && (
+                <button
+                  className="btn btn--ghost"
+                  type="button"
+                  disabled={isPending}
+                  onClick={async () => {
+                    try {
+                      await onFreeze?.(item.wallet);
+                    } catch (e) {
+                      alert(e?.shortMessage || e?.message || "Erreur freeze");
+                    }
+                  }}
+                >
+                  🧊 Révoquer (geler)
+                </button>
+              )}
+
+              {showReject && (
+                <button
+                  className="btn btn--ghost"
+                  type="button"
+                  disabled={isPending || (canReject ? !canReject(item) : false)}
+                  onClick={async () => {
+                    try {
+                      await onReject?.(item.wallet);
+                    } catch (e) {
+                      alert(e?.shortMessage || e?.message || "Erreur reject");
+                    }
+                  }}
+                >
+                  ❌ Rejeter
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

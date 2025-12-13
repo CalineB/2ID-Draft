@@ -191,7 +191,7 @@ export default function Market() {
                 </p>
 
                 <p style={{ margin: "0.5rem 0", fontSize: "0.9rem" }}>
-                  <strong>Token :</strong> {h.symbol}
+                  <strong>Security Token :</strong> {h.symbol}
                   <br />
                   <strong>Tokens vendus :</strong>{" "}
                   {String(h.totalSupply)} / {String(h.maxSupply)}
